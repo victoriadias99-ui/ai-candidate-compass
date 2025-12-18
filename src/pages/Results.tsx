@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
 import { CandidateTable } from "@/components/CandidateTable";
 import { 
@@ -45,6 +46,7 @@ const Results = () => {
   const navigate = useNavigate();
   const { jobId } = useParams();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,7 +76,6 @@ const Results = () => {
     if (jobId && user) {
       fetchData();
       
-      // Poll for updates every 5 seconds while analysis is in progress
       const interval = setInterval(fetchData, 5000);
       setRefreshInterval(interval);
       
@@ -88,7 +89,6 @@ const Results = () => {
     if (!jobId) return;
 
     try {
-      // Fetch job position
       const { data: job, error: jobError } = await supabase
         .from("job_positions")
         .select("*")
@@ -98,7 +98,6 @@ const Results = () => {
       if (jobError) throw jobError;
       setJobPosition(job);
 
-      // Fetch candidates
       const { data: candidateData, error: candidateError } = await supabase
         .from("candidates")
         .select("*")
@@ -108,7 +107,6 @@ const Results = () => {
       if (candidateError) throw candidateError;
       setCandidates(candidateData || []);
 
-      // Check if all candidates are analyzed
       const allAnalyzed = candidateData?.every(c => c.analyzed_at !== null);
       if (allAnalyzed && refreshInterval) {
         clearInterval(refreshInterval);
@@ -117,8 +115,8 @@ const Results = () => {
     } catch (error: any) {
       console.error("Error fetching data:", error);
       toast({
-        title: "Error",
-        description: "Failed to load results.",
+        title: t("error"),
+        description: "Error al cargar los resultados.",
         variant: "destructive",
       });
     } finally {
@@ -129,7 +127,7 @@ const Results = () => {
   const exportToCSV = () => {
     if (candidates.length === 0) return;
 
-    const headers = ["Name", "Email", "Final Score", "Technical", "Experience", "Soft Skills", "Recommendation"];
+    const headers = [t("name"), t("email"), t("finalScore"), t("technical"), t("experience"), t("softSkills"), t("recommendation")];
     const rows = candidates.map(c => [
       c.name,
       c.email || "",
@@ -137,7 +135,7 @@ const Results = () => {
       c.technical_score?.toString() || "0",
       c.experience_score?.toString() || "0",
       c.soft_skills_score?.toString() || "0",
-      c.recommendation || "pending",
+      c.recommendation || t("pending"),
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -145,20 +143,28 @@ const Results = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `candidates-${jobPosition?.title || "export"}.csv`;
+    a.download = `candidatos-${jobPosition?.title || "export"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
 
     toast({
-      title: "Export Complete",
-      description: "Candidate data has been exported to CSV.",
+      title: t("exportComplete"),
+      description: t("exportCompleteDesc"),
     });
+  };
+
+  const getRecommendationText = (rec: string | null) => {
+    switch (rec) {
+      case "strong_hire": return t("strongHire");
+      case "consider": return t("consider");
+      case "not_recommended": return t("notRecommended");
+      default: return t("pending");
+    }
   };
 
   const analyzedCandidates = candidates.filter(c => c.analyzed_at !== null);
   const pendingCandidates = candidates.filter(c => c.analyzed_at === null);
   const top3 = analyzedCandidates.slice(0, 3);
-  const top5 = analyzedCandidates.slice(0, 5);
   const averageScore = analyzedCandidates.length > 0
     ? (analyzedCandidates.reduce((sum, c) => sum + (c.final_score || 0), 0) / analyzedCandidates.length).toFixed(1)
     : "0";
@@ -168,7 +174,7 @@ const Results = () => {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-          <p className="mt-4 text-muted-foreground">Loading results...</p>
+          <p className="mt-4 text-muted-foreground">{t("loadingResults")}</p>
         </div>
       </div>
     );
@@ -189,19 +195,19 @@ const Results = () => {
               className="mb-2 -ml-2"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
+              {t("backToDashboard")}
             </Button>
             <h1 className="font-display text-3xl font-bold text-foreground">
-              {jobPosition?.title || "Analysis Results"}
+              {jobPosition?.title || t("analysisResults")}
             </h1>
             <p className="text-muted-foreground">
-              {candidates.length} candidates analyzed
+              {candidates.length} {t("candidatesAnalyzed")}
             </p>
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={exportToCSV} disabled={candidates.length === 0}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              {t("exportCSV")}
             </Button>
           </div>
         </div>
@@ -215,7 +221,7 @@ const Results = () => {
                   <Users className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Candidates</p>
+                  <p className="text-sm text-muted-foreground">{t("totalCandidates")}</p>
                   <p className="text-2xl font-bold text-foreground">{candidates.length}</p>
                 </div>
               </div>
@@ -229,7 +235,7 @@ const Results = () => {
                   <TrendingUp className="h-6 w-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Average Score</p>
+                  <p className="text-sm text-muted-foreground">{t("averageScore")}</p>
                   <p className="text-2xl font-bold text-foreground">{averageScore}</p>
                 </div>
               </div>
@@ -243,7 +249,7 @@ const Results = () => {
                   <Trophy className="h-6 w-6 text-accent" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Strong Hires</p>
+                  <p className="text-sm text-muted-foreground">{t("strongHires")}</p>
                   <p className="text-2xl font-bold text-foreground">
                     {analyzedCandidates.filter(c => c.recommendation === "strong_hire").length}
                   </p>
@@ -259,7 +265,7 @@ const Results = () => {
                   <BarChart3 className="h-6 w-6 text-warning" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Pending Analysis</p>
+                  <p className="text-sm text-muted-foreground">{t("pendingAnalysis")}</p>
                   <p className="text-2xl font-bold text-foreground">{pendingCandidates.length}</p>
                 </div>
               </div>
@@ -273,10 +279,10 @@ const Results = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display">
                 <Trophy className="h-5 w-5 text-accent" />
-                Top Candidates
+                {t("topCandidates")}
               </CardTitle>
               <CardDescription>
-                AI-recommended candidates based on your criteria
+                {t("topCandidatesDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -292,7 +298,7 @@ const Results = () => {
                     </div>
                     <div className="ml-4">
                       <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-                      <p className="text-sm text-muted-foreground">{candidate.email || "No email"}</p>
+                      <p className="text-sm text-muted-foreground">{candidate.email || t("noEmail")}</p>
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-2xl font-bold text-accent">
                           {candidate.final_score?.toFixed(0) || 0}
@@ -304,7 +310,7 @@ const Results = () => {
                           }
                           className="text-xs"
                         >
-                          {candidate.recommendation?.replace("_", " ") || "pending"}
+                          {getRecommendationText(candidate.recommendation)}
                         </Badge>
                       </div>
                     </div>
@@ -318,9 +324,9 @@ const Results = () => {
         {/* All Candidates Table */}
         <Card className="border-border/50 shadow-md">
           <CardHeader>
-            <CardTitle className="font-display">All Candidates</CardTitle>
+            <CardTitle className="font-display">{t("allCandidates")}</CardTitle>
             <CardDescription>
-              Click on a candidate to view their detailed evaluation
+              {t("allCandidatesDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
 import { FileUploader } from "@/components/FileUploader";
 import { 
@@ -17,14 +18,14 @@ import {
   Target, 
   Briefcase, 
   Heart,
-  Upload,
-  Play
+  Upload
 } from "lucide-react";
 import type { User, Session } from "@supabase/supabase-js";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -74,8 +75,8 @@ const Dashboard = () => {
   const handleAnalyze = async () => {
     if (!jobDescription.trim()) {
       toast({
-        title: "Missing Information",
-        description: "Please enter a job description.",
+        title: t("fillAllFields"),
+        description: t("jobDescriptionPlaceholder"),
         variant: "destructive",
       });
       return;
@@ -83,8 +84,8 @@ const Dashboard = () => {
 
     if (files.length === 0) {
       toast({
-        title: "No CVs Uploaded",
-        description: "Please upload at least one CV to analyze.",
+        title: t("uploadAtLeastOne"),
+        description: t("uploadCVsDesc"),
         variant: "destructive",
       });
       return;
@@ -92,8 +93,8 @@ const Dashboard = () => {
 
     if (!isAdmin) {
       toast({
-        title: "Permission Denied",
-        description: "Only administrators can analyze candidates.",
+        title: t("error"),
+        description: "Solo los administradores pueden analizar candidatos.",
         variant: "destructive",
       });
       return;
@@ -107,7 +108,7 @@ const Dashboard = () => {
         .from("job_positions")
         .insert({
           user_id: user?.id,
-          title: jobTitle || "Untitled Position",
+          title: jobTitle || "Posición sin título",
           description: jobDescription,
           technical_weight: technicalWeight[0],
           experience_weight: experienceWeight[0],
@@ -147,16 +148,16 @@ const Dashboard = () => {
       if (analysisError) throw analysisError;
 
       toast({
-        title: "Analysis Started",
-        description: "AI is analyzing your candidates. This may take a few minutes.",
+        title: t("analysisStarted"),
+        description: t("analysisStartedDesc"),
       });
 
       navigate(`/results/${jobPosition.id}`);
     } catch (error: any) {
       console.error("Analysis error:", error);
       toast({
-        title: "Analysis Failed",
-        description: error.message || "An error occurred during analysis.",
+        title: t("analysisError"),
+        description: t("analysisErrorDesc"),
         variant: "destructive",
       });
     } finally {
@@ -180,9 +181,9 @@ const Dashboard = () => {
       
       <main className="container mx-auto px-4 py-8 pt-24">
         <div className="mb-8">
-          <h1 className="font-display text-3xl font-bold text-foreground">Candidate Analysis</h1>
+          <h1 className="font-display text-3xl font-bold text-foreground">{t("newAnalysis")}</h1>
           <p className="text-muted-foreground">
-            Upload CVs and let AI evaluate candidates against your requirements.
+            {t("uploadCVsDesc")}
           </p>
         </div>
 
@@ -192,27 +193,27 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display">
                 <Briefcase className="h-5 w-5 text-primary" />
-                Job Requirements
+                {t("jobDescription")}
               </CardTitle>
               <CardDescription>
-                Describe the role and requirements. The AI will evaluate candidates against this description.
+                Describe el rol y los requisitos. La IA evaluará a los candidatos según esta descripción.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="job-title">Job Title</Label>
+                <Label htmlFor="job-title">{t("jobTitle")}</Label>
                 <Input
                   id="job-title"
-                  placeholder="e.g., Senior Software Engineer"
+                  placeholder={t("jobTitlePlaceholder")}
                   value={jobTitle}
                   onChange={(e) => setJobTitle(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="job-description">Job Description & Requirements</Label>
+                <Label htmlFor="job-description">{t("jobDescription")}</Label>
                 <Textarea
                   id="job-description"
-                  placeholder="Describe the role, responsibilities, required skills, experience level, and any other relevant requirements..."
+                  placeholder={t("jobDescriptionPlaceholder")}
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
                   className="min-h-[200px] resize-none"
@@ -226,10 +227,10 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display">
                 <Target className="h-5 w-5 text-primary" />
-                Evaluation Weights
+                {t("evaluationWeights")}
               </CardTitle>
               <CardDescription>
-                Adjust the importance of each evaluation criteria.
+                Ajusta la importancia de cada criterio de evaluación.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -237,7 +238,7 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-accent" />
-                    Technical Skills
+                    {t("technicalSkills")}
                   </Label>
                   <span className="text-sm font-medium text-foreground">{technicalWeight[0]}%</span>
                 </div>
@@ -254,7 +255,7 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <Briefcase className="h-4 w-4 text-accent" />
-                    Experience
+                    {t("experience")}
                   </Label>
                   <span className="text-sm font-medium text-foreground">{experienceWeight[0]}%</span>
                 </div>
@@ -271,7 +272,7 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <Heart className="h-4 w-4 text-accent" />
-                    Soft Skills
+                    {t("softSkills")}
                   </Label>
                   <span className="text-sm font-medium text-foreground">{softSkillsWeight[0]}%</span>
                 </div>
@@ -289,7 +290,7 @@ const Dashboard = () => {
                   ? "bg-success/10 text-success" 
                   : "bg-destructive/10 text-destructive"
               }`}>
-                Total: {totalWeight}% {totalWeight !== 100 && "(should be 100%)"}
+                Total: {totalWeight}% {totalWeight !== 100 && "(debe ser 100%)"}
               </div>
             </CardContent>
           </Card>
@@ -300,10 +301,10 @@ const Dashboard = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display">
               <Upload className="h-5 w-5 text-primary" />
-              Upload CVs
+              {t("uploadCVs")}
             </CardTitle>
             <CardDescription>
-              Upload up to 50 PDF files. The AI will extract and analyze candidate information.
+              {t("maxFiles")}. La IA extraerá y analizará la información de los candidatos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -315,7 +316,7 @@ const Dashboard = () => {
             />
             {!isAdmin && (
               <p className="mt-4 text-sm text-muted-foreground">
-                Only administrators can upload and analyze CVs. Contact your admin for access.
+                Solo los administradores pueden subir y analizar CVs. Contacta a tu administrador para obtener acceso.
               </p>
             )}
           </CardContent>
@@ -332,12 +333,12 @@ const Dashboard = () => {
             {isAnalyzing ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Analyzing Candidates...
+                {t("analyzing")}
               </>
             ) : (
               <>
                 <Brain className="h-5 w-5" />
-                Analyze Candidates with AI
+                {t("analyzeWithAI")}
               </>
             )}
           </Button>
