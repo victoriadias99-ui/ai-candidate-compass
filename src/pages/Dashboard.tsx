@@ -429,7 +429,7 @@ const Dashboard = () => {
           <Button
             size="lg"
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !isAdmin || files.length === 0 || totalWeight !== 100}
+            disabled={isAnalyzing || !isAdmin || (dataSource === "cv" && files.length === 0) || totalWeight !== 100}
             className="gap-2 px-12 text-lg"
           >
             {isAnalyzing ? (
