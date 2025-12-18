@@ -4,6 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
@@ -13,7 +24,8 @@ import {
   Calendar, 
   Users,
   ChevronRight,
-  Plus
+  Plus,
+  Trash2
 } from "lucide-react";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -89,6 +101,40 @@ const History = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      // Delete related data first (cascade)
+      const { data: candidates } = await supabase.from("candidates").select("id").eq("job_position_id", jobId);
+      if (candidates && candidates.length > 0) {
+        await supabase.from("candidate_responses").delete().in("candidate_id", candidates.map(c => c.id));
+      }
+      await supabase.from("candidates").delete().eq("job_position_id", jobId);
+      
+      const { data: configs } = await supabase.from("google_sheets_config").select("id").eq("job_position_id", jobId);
+      if (configs && configs.length > 0) {
+        await supabase.from("column_mappings").delete().in("google_sheets_config_id", configs.map(c => c.id));
+      }
+      await supabase.from("google_sheets_config").delete().eq("job_position_id", jobId);
+      
+      const { error } = await supabase.from("job_positions").delete().eq("id", jobId);
+      if (error) throw error;
+
+      setJobPositions(prev => prev.filter(j => j.id !== jobId));
+      toast({
+        title: t("success"),
+        description: "Posición eliminada correctamente",
+      });
+    } catch (error: any) {
+      console.error("Error deleting job:", error);
+      toast({
+        title: t("error"),
+        description: "Error al eliminar la posición",
+        variant: "destructive",
+      });
     }
   };
 
@@ -168,6 +214,35 @@ const History = () => {
                     <Badge variant={job.status === "active" ? "default" : "secondary"}>
                       {job.status === "active" ? t("active") : t("completed")}
                     </Badge>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar posición?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción eliminará la posición "{job.title}" y todos sus candidatos asociados. Esta acción no se puede deshacer.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={(e) => handleDeleteJob(job.id, e)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </CardContent>
