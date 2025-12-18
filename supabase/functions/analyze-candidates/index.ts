@@ -31,7 +31,7 @@ serve(async (req) => {
 
     if (jobError) throw jobError;
 
-    // Get candidates
+    // Get candidates with their responses
     const { data: candidates, error: candidatesError } = await supabase
       .from("candidates")
       .select("*")
@@ -39,45 +39,102 @@ serve(async (req) => {
 
     if (candidatesError) throw candidatesError;
 
+    // Check if there's a Google Sheets config for this job
+    const { data: sheetsConfig } = await supabase
+      .from("google_sheets_config")
+      .select("*")
+      .eq("job_position_id", jobPositionId)
+      .single();
+
+    // Get column mappings if Google Sheets is configured
+    let columnMappings: any[] = [];
+    if (sheetsConfig) {
+      const { data: mappings } = await supabase
+        .from("column_mappings")
+        .select("*")
+        .eq("google_sheets_config_id", sheetsConfig.id);
+      columnMappings = mappings || [];
+    }
+
     console.log(`Analyzing ${candidates.length} candidates for job: ${job.title}`);
+    console.log(`Data source: ${sheetsConfig ? "Google Sheets (primary) + CV (secondary)" : "CV only"}`);
 
     // Analyze each candidate
     for (const candidate of candidates) {
+      // Skip if already marked as not_recommended by knockout rules
+      if (candidate.recommendation === "not_recommended" && candidate.summary?.includes("Descalificado automáticamente")) {
+        console.log(`Skipping knocked-out candidate: ${candidate.name}`);
+        continue;
+      }
+
       try {
-        const prompt = `You are an expert HR recruiter analyzing a candidate's CV for the following position:
+        // Get candidate responses from Google Sheets
+        let formResponses = "";
+        if (sheetsConfig) {
+          const { data: responses } = await supabase
+            .from("candidate_responses")
+            .select("*, column_mappings(*)")
+            .eq("candidate_id", candidate.id);
 
-JOB TITLE: ${job.title}
+          if (responses && responses.length > 0) {
+            formResponses = "\n\nRESPUESTAS DEL FORMULARIO (FUENTE PRIMARIA):\n";
+            formResponses += "=" .repeat(50) + "\n";
+            
+            for (const response of responses) {
+              const mapping = response.column_mappings;
+              const mappingLabel = getMappingTypeLabel(mapping?.mapping_type);
+              formResponses += `\n[${mappingLabel}] ${response.question}:\n`;
+              formResponses += `Respuesta: ${response.answer || "Sin respuesta"}\n`;
+              if (mapping?.weight > 0) {
+                formResponses += `Peso de evaluación: ${mapping.weight}%\n`;
+              }
+            }
+          }
+        }
 
-JOB DESCRIPTION:
+        const prompt = `Eres un experto reclutador de RRHH analizando un candidato para la siguiente posición.
+
+REGLA CRÍTICA DE PRIORIZACIÓN DE DATOS:
+- Google Sheets (respuestas del formulario) = FUENTE PRIMARIA Y AUTORITATIVA
+- CV (PDF) = FUENTE SECUNDARIA Y COMPLEMENTARIA
+- Si hay conflicto entre datos, Google Sheets prevalece
+
+TÍTULO DEL PUESTO: ${job.title}
+
+DESCRIPCIÓN DEL PUESTO:
 ${job.description}
 
-EVALUATION WEIGHTS:
-- Technical Skills: ${job.technical_weight}%
-- Experience: ${job.experience_weight}%
-- Soft Skills: ${job.soft_skills_weight}%
+PESOS DE EVALUACIÓN:
+- Habilidades Técnicas: ${job.technical_weight}%
+- Experiencia: ${job.experience_weight}%
+- Habilidades Blandas: ${job.soft_skills_weight}%
 
-CANDIDATE: ${candidate.name}
-CV FILENAME: ${candidate.cv_file_path}
+CANDIDATO: ${candidate.name}
+Email: ${candidate.email || "No proporcionado"}
+Teléfono: ${candidate.phone || "No proporcionado"}
+${formResponses}
+${candidate.cv_text_content ? `\nCONTENIDO DEL CV (FUENTE SECUNDARIA):\n${candidate.cv_text_content}` : `\nARCHIVO CV: ${candidate.cv_file_path}`}
 
-Based on the job requirements, evaluate this candidate and provide:
-1. Technical Skills Score (0-100)
-2. Experience Score (0-100)
-3. Soft Skills Score (0-100)
-4. A brief summary (2-3 sentences)
-5. 3-4 key strengths
-6. 2-3 areas for improvement
-7. Overall recommendation: "strong_hire", "consider", or "not_recommended"
+PROCESO DE EVALUACIÓN:
+1. Analiza PRIMERO las respuestas del formulario de Google Sheets
+2. Mapea cada pregunta-respuesta a los criterios de evaluación
+3. Usa el CV solo para:
+   - Validar experiencia mencionada
+   - Agregar profundidad a habilidades
+   - Detectar fortalezas o brechas adicionales
+4. Reporta cualquier inconsistencia entre el formulario y el CV
 
-Respond in this exact JSON format:
+Proporciona la evaluación en este formato JSON exacto:
 {
-  "technical_score": number,
-  "experience_score": number,
-  "soft_skills_score": number,
-  "summary": "string",
-  "strengths": ["string", "string", "string"],
-  "weaknesses": ["string", "string"],
+  "technical_score": number (0-100),
+  "experience_score": number (0-100),
+  "soft_skills_score": number (0-100),
+  "summary": "resumen de 2-3 oraciones priorizando datos del formulario",
+  "strengths": ["fortaleza1", "fortaleza2", "fortaleza3"],
+  "weaknesses": ["área de mejora1", "área de mejora2"],
   "recommendation": "strong_hire" | "consider" | "not_recommended",
-  "detailed_evaluation": "string"
+  "detailed_evaluation": "evaluación detallada incluyendo análisis de respuestas del formulario",
+  "data_inconsistencies": ["lista de inconsistencias entre formulario y CV, si las hay"]
 }`;
 
         const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -89,7 +146,10 @@ Respond in this exact JSON format:
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { role: "system", content: "You are an expert HR recruiter. Analyze candidates objectively and provide structured evaluations." },
+              { 
+                role: "system", 
+                content: "Eres un experto reclutador de RRHH. Analiza candidatos objetivamente priorizando SIEMPRE los datos del formulario de Google Sheets como fuente primaria. Proporciona evaluaciones estructuradas en español." 
+              },
               { role: "user", content: prompt }
             ],
           }),
@@ -114,9 +174,9 @@ Respond in this exact JSON format:
             technical_score: 70,
             experience_score: 65,
             soft_skills_score: 70,
-            summary: "Candidate shows potential based on submitted CV.",
-            strengths: ["Professional background", "Relevant experience"],
-            weaknesses: ["Further review recommended"],
+            summary: "Candidato muestra potencial basado en la información proporcionada.",
+            strengths: ["Experiencia relevante", "Perfil profesional"],
+            weaknesses: ["Se requiere revisión adicional"],
             recommendation: "consider",
             detailed_evaluation: content
           };
@@ -146,11 +206,28 @@ Respond in this exact JSON format:
           })
           .eq("id", candidate.id);
 
+        // Update individual response scores if available
+        if (sheetsConfig && evaluation.response_scores) {
+          for (const [columnIndex, score] of Object.entries(evaluation.response_scores)) {
+            await supabase
+              .from("candidate_responses")
+              .update({ score: score as number })
+              .eq("candidate_id", candidate.id)
+              .eq("column_mapping_id", columnIndex);
+          }
+        }
+
         console.log(`Analyzed: ${candidate.name} - Score: ${finalScore.toFixed(1)}`);
       } catch (candidateError) {
         console.error(`Error analyzing ${candidate.name}:`, candidateError);
       }
     }
+
+    // Update job position status
+    await supabase
+      .from("job_positions")
+      .update({ status: "completed" })
+      .eq("id", jobPositionId);
 
     return new Response(JSON.stringify({ success: true, analyzed: candidates.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -163,3 +240,18 @@ Respond in this exact JSON format:
     });
   }
 });
+
+function getMappingTypeLabel(type: string | undefined): string {
+  const labels: Record<string, string> = {
+    name: "NOMBRE",
+    email: "EMAIL",
+    phone: "TELÉFONO",
+    technical: "HABILIDAD TÉCNICA",
+    experience: "EXPERIENCIA",
+    soft_skills: "HABILIDAD BLANDA",
+    knockout: "CRITERIO ELIMINATORIO",
+    info: "INFORMACIÓN",
+    ignore: "IGNORAR",
+  };
+  return labels[type || "info"] || "INFORMACIÓN";
+}

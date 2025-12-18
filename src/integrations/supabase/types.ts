@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_responses: {
+        Row: {
+          ai_analysis: string | null
+          answer: string | null
+          candidate_id: string
+          column_mapping_id: string
+          created_at: string
+          id: string
+          question: string
+          score: number | null
+        }
+        Insert: {
+          ai_analysis?: string | null
+          answer?: string | null
+          candidate_id: string
+          column_mapping_id: string
+          created_at?: string
+          id?: string
+          question: string
+          score?: number | null
+        }
+        Update: {
+          ai_analysis?: string | null
+          answer?: string | null
+          candidate_id?: string
+          column_mapping_id?: string
+          created_at?: string
+          id?: string
+          question?: string
+          score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_responses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_responses_column_mapping_id_fkey"
+            columns: ["column_mapping_id"]
+            isOneToOne: false
+            referencedRelation: "column_mappings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           ai_evaluation: string | null
@@ -86,6 +134,91 @@ export type Database = {
             foreignKeyName: "candidates_job_position_id_fkey"
             columns: ["job_position_id"]
             isOneToOne: false
+            referencedRelation: "job_positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      column_mappings: {
+        Row: {
+          column_index: number
+          column_name: string
+          created_at: string
+          google_sheets_config_id: string
+          id: string
+          is_knockout: boolean | null
+          knockout_operator: string | null
+          knockout_value: string | null
+          mapping_type: string
+          weight: number | null
+        }
+        Insert: {
+          column_index: number
+          column_name: string
+          created_at?: string
+          google_sheets_config_id: string
+          id?: string
+          is_knockout?: boolean | null
+          knockout_operator?: string | null
+          knockout_value?: string | null
+          mapping_type: string
+          weight?: number | null
+        }
+        Update: {
+          column_index?: number
+          column_name?: string
+          created_at?: string
+          google_sheets_config_id?: string
+          id?: string
+          is_knockout?: boolean | null
+          knockout_operator?: string | null
+          knockout_value?: string | null
+          mapping_type?: string
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "column_mappings_google_sheets_config_id_fkey"
+            columns: ["google_sheets_config_id"]
+            isOneToOne: false
+            referencedRelation: "google_sheets_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_sheets_config: {
+        Row: {
+          created_at: string
+          id: string
+          job_position_id: string
+          last_synced_at: string | null
+          sheet_id: string
+          sheet_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_position_id: string
+          last_synced_at?: string | null
+          sheet_id: string
+          sheet_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_position_id?: string
+          last_synced_at?: string | null
+          sheet_id?: string
+          sheet_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_sheets_config_job_position_id_fkey"
+            columns: ["job_position_id"]
+            isOneToOne: true
             referencedRelation: "job_positions"
             referencedColumns: ["id"]
           },
