@@ -7,10 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
 import { FileUploader } from "@/components/FileUploader";
+import { GoogleSheetsConfig } from "@/components/GoogleSheetsConfig";
 import { 
   Brain, 
   Loader2, 
@@ -18,7 +20,8 @@ import {
   Target, 
   Briefcase, 
   Heart,
-  Upload
+  Upload,
+  Sheet
 } from "lucide-react";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -39,6 +42,9 @@ const Dashboard = () => {
   const [experienceWeight, setExperienceWeight] = useState([25]);
   const [softSkillsWeight, setSoftSkillsWeight] = useState([15]);
   const [files, setFiles] = useState<File[]>([]);
+  const [dataSource, setDataSource] = useState<"cv" | "sheets">("sheets");
+  const [sheetsConfigId, setSheetsConfigId] = useState<string | null>(null);
+  const [jobPositionId, setJobPositionId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
@@ -72,6 +78,76 @@ const Dashboard = () => {
     }
   };
 
+  const createJobPosition = async () => {
+    if (!jobDescription.trim()) {
+      toast({
+        title: t("fillAllFields"),
+        description: t("jobDescriptionPlaceholder"),
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    const { data: jobPosition, error: jobError } = await supabase
+      .from("job_positions")
+      .insert({
+        user_id: user?.id,
+        title: jobTitle || "Posición sin título",
+        description: jobDescription,
+        technical_weight: technicalWeight[0],
+        experience_weight: experienceWeight[0],
+        soft_skills_weight: softSkillsWeight[0],
+      })
+      .select()
+      .single();
+
+    if (jobError) throw jobError;
+    setJobPositionId(jobPosition.id);
+    return jobPosition;
+  };
+
+  const handleSheetsConfigured = async (configId: string) => {
+    setSheetsConfigId(configId);
+    
+    toast({
+      title: t("success"),
+      description: "Google Sheets configurado. Sincronizando candidatos...",
+    });
+
+    // Sync candidates from Google Sheets
+    setIsAnalyzing(true);
+    try {
+      const { error: syncError } = await supabase.functions.invoke("sync-google-sheets", {
+        body: { jobPositionId, configId },
+      });
+
+      if (syncError) throw syncError;
+
+      // Trigger AI analysis
+      const { error: analysisError } = await supabase.functions.invoke("analyze-candidates", {
+        body: { jobPositionId },
+      });
+
+      if (analysisError) throw analysisError;
+
+      toast({
+        title: t("analysisStarted"),
+        description: t("analysisStartedDesc"),
+      });
+
+      navigate(`/results/${jobPositionId}`);
+    } catch (error: any) {
+      console.error("Analysis error:", error);
+      toast({
+        title: t("analysisError"),
+        description: error.message || t("analysisErrorDesc"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!jobDescription.trim()) {
       toast({
@@ -82,7 +158,7 @@ const Dashboard = () => {
       return;
     }
 
-    if (files.length === 0) {
+    if (dataSource === "cv" && files.length === 0) {
       toast({
         title: t("uploadAtLeastOne"),
         description: t("uploadCVsDesc"),
@@ -103,23 +179,17 @@ const Dashboard = () => {
     setIsAnalyzing(true);
 
     try {
-      // Create job position
-      const { data: jobPosition, error: jobError } = await supabase
-        .from("job_positions")
-        .insert({
-          user_id: user?.id,
-          title: jobTitle || "Posición sin título",
-          description: jobDescription,
-          technical_weight: technicalWeight[0],
-          experience_weight: experienceWeight[0],
-          soft_skills_weight: softSkillsWeight[0],
-        })
-        .select()
-        .single();
+      const jobPosition = await createJobPosition();
+      if (!jobPosition) return;
 
-      if (jobError) throw jobError;
+      if (dataSource === "sheets") {
+        // For sheets, we need to configure first
+        setJobPositionId(jobPosition.id);
+        setIsAnalyzing(false);
+        return;
+      }
 
-      // Upload CVs and create candidates
+      // CV-based analysis
       for (const file of files) {
         const filePath = `${user?.id}/${jobPosition.id}/${Date.now()}_${file.name}`;
         
@@ -132,7 +202,6 @@ const Dashboard = () => {
           continue;
         }
 
-        // Create candidate record
         await supabase.from("candidates").insert({
           job_position_id: jobPosition.id,
           name: file.name.replace(".pdf", ""),
@@ -140,7 +209,6 @@ const Dashboard = () => {
         });
       }
 
-      // Trigger AI analysis
       const { error: analysisError } = await supabase.functions.invoke("analyze-candidates", {
         body: { jobPositionId: jobPosition.id },
       });
@@ -296,29 +364,63 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* File Upload Card */}
+        {/* Data Source Selection */}
         <Card className="mt-6 border-border/50 shadow-md">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display">
-              <Upload className="h-5 w-5 text-primary" />
-              {t("uploadCVs")}
-            </CardTitle>
+            <CardTitle className="font-display">Fuente de Datos de Candidatos</CardTitle>
             <CardDescription>
-              {t("maxFiles")}. La IA extraerá y analizará la información de los candidatos.
+              Selecciona de dónde provienen los datos de candidatos
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <FileUploader 
-              files={files} 
-              setFiles={setFiles} 
-              maxFiles={50}
-              disabled={!isAdmin}
-            />
-            {!isAdmin && (
-              <p className="mt-4 text-sm text-muted-foreground">
-                Solo los administradores pueden subir y analizar CVs. Contacta a tu administrador para obtener acceso.
-              </p>
-            )}
+            <Tabs value={dataSource} onValueChange={(v) => setDataSource(v as "cv" | "sheets")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="sheets" className="gap-2">
+                  <Sheet className="h-4 w-4" />
+                  Google Sheets (Primario)
+                </TabsTrigger>
+                <TabsTrigger value="cv" className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  CVs PDF (Secundario)
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="sheets" className="mt-4">
+                {jobPositionId ? (
+                  <GoogleSheetsConfig
+                    jobPositionId={jobPositionId}
+                    onConfigured={handleSheetsConfigured}
+                    onCancel={() => setJobPositionId(null)}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                    <Sheet className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <h3 className="mt-4 font-medium">Google Sheets como fuente primaria</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Conecta tu Google Sheet con las respuestas del formulario de Meta Ads.
+                      La IA analizará las respuestas como fuente principal.
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Haz clic en "Analizar" para crear la posición y configurar el Sheet.
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="cv" className="mt-4">
+                <FileUploader 
+                  files={files} 
+                  setFiles={setFiles} 
+                  maxFiles={50}
+                  disabled={!isAdmin}
+                />
+                {!isAdmin && (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Solo los administradores pueden subir y analizar CVs.
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
