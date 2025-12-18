@@ -31,8 +31,13 @@ interface ColumnMapping {
 }
 
 interface GoogleSheetsConfigProps {
-  jobPositionId: string | null;
-  onConfigured: (configId: string, mappings: ColumnMapping[]) => void;
+  jobTitle: string;
+  jobDescription: string;
+  technicalWeight: number;
+  experienceWeight: number;
+  softSkillsWeight: number;
+  userId: string;
+  onConfigured: (configId: string, jobPositionId: string) => void;
   onCancel: () => void;
 }
 
@@ -56,7 +61,16 @@ const KNOCKOUT_OPERATORS = [
   { value: "greater_than", label: "Mayor que" },
 ];
 
-export const GoogleSheetsConfig = ({ jobPositionId, onConfigured, onCancel }: GoogleSheetsConfigProps) => {
+export const GoogleSheetsConfig = ({ 
+  jobTitle, 
+  jobDescription, 
+  technicalWeight, 
+  experienceWeight, 
+  softSkillsWeight, 
+  userId,
+  onConfigured, 
+  onCancel 
+}: GoogleSheetsConfigProps) => {
   const { toast } = useToast();
   const { t } = useLanguage();
   
@@ -157,10 +171,10 @@ export const GoogleSheetsConfig = ({ jobPositionId, onConfigured, onCancel }: Go
   };
 
   const handleSaveConfig = async () => {
-    if (!jobPositionId) {
+    if (!jobDescription.trim()) {
       toast({
         title: t("error"),
-        description: "Primero debes crear la posición de trabajo",
+        description: "Debes completar la descripción del puesto primero",
         variant: "destructive",
       });
       return;
@@ -179,26 +193,36 @@ export const GoogleSheetsConfig = ({ jobPositionId, onConfigured, onCancel }: Go
 
     setIsLoading(true);
     try {
-      // Create or update Google Sheets config
+      // First create the job position
+      const { data: jobPosition, error: jobError } = await supabase
+        .from("job_positions")
+        .insert({
+          user_id: userId,
+          title: jobTitle || "Posición sin título",
+          description: jobDescription,
+          technical_weight: technicalWeight,
+          experience_weight: experienceWeight,
+          soft_skills_weight: softSkillsWeight,
+        })
+        .select()
+        .single();
+
+      if (jobError) throw jobError;
+
+      // Create Google Sheets config
       const { data: config, error: configError } = await supabase
         .from("google_sheets_config")
-        .upsert({
-          job_position_id: jobPositionId,
+        .insert({
+          job_position_id: jobPosition.id,
           sheet_id: extractSheetId(sheetId),
           sheet_name: sheetName,
-        }, { onConflict: "job_position_id" })
+        })
         .select()
         .single();
 
       if (configError) throw configError;
 
-      // Delete existing mappings
-      await supabase
-        .from("column_mappings")
-        .delete()
-        .eq("google_sheets_config_id", config.id);
-
-      // Insert new mappings
+      // Insert column mappings
       const { error: mappingsError } = await supabase
         .from("column_mappings")
         .insert(
@@ -221,7 +245,7 @@ export const GoogleSheetsConfig = ({ jobPositionId, onConfigured, onCancel }: Go
         description: "Configuración guardada correctamente",
       });
 
-      onConfigured(config.id, mappings);
+      onConfigured(config.id, jobPosition.id);
     } catch (error: any) {
       console.error("Save error:", error);
       toast({

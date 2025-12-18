@@ -106,8 +106,9 @@ const Dashboard = () => {
     return jobPosition;
   };
 
-  const handleSheetsConfigured = async (configId: string) => {
+  const handleSheetsConfigured = async (configId: string, createdJobPositionId: string) => {
     setSheetsConfigId(configId);
+    setJobPositionId(createdJobPositionId);
     
     toast({
       title: t("success"),
@@ -118,14 +119,14 @@ const Dashboard = () => {
     setIsAnalyzing(true);
     try {
       const { error: syncError } = await supabase.functions.invoke("sync-google-sheets", {
-        body: { jobPositionId, configId },
+        body: { jobPositionId: createdJobPositionId, configId },
       });
 
       if (syncError) throw syncError;
 
       // Trigger AI analysis
       const { error: analysisError } = await supabase.functions.invoke("analyze-candidates", {
-        body: { jobPositionId },
+        body: { jobPositionId: createdJobPositionId },
       });
 
       if (analysisError) throw analysisError;
@@ -135,7 +136,7 @@ const Dashboard = () => {
         description: t("analysisStartedDesc"),
       });
 
-      navigate(`/results/${jobPositionId}`);
+      navigate(`/results/${createdJobPositionId}`);
     } catch (error: any) {
       console.error("Analysis error:", error);
       toast({
@@ -386,25 +387,16 @@ const Dashboard = () => {
               </TabsList>
               
               <TabsContent value="sheets" className="mt-4">
-                {jobPositionId ? (
-                  <GoogleSheetsConfig
-                    jobPositionId={jobPositionId}
-                    onConfigured={handleSheetsConfigured}
-                    onCancel={() => setJobPositionId(null)}
-                  />
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border p-8 text-center">
-                    <Sheet className="mx-auto h-12 w-12 text-muted-foreground" />
-                    <h3 className="mt-4 font-medium">Google Sheets como fuente primaria</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Conecta tu Google Sheet con las respuestas del formulario de Meta Ads.
-                      La IA analizará las respuestas como fuente principal.
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Haz clic en "Analizar" para crear la posición y configurar el Sheet.
-                    </p>
-                  </div>
-                )}
+                <GoogleSheetsConfig
+                  jobTitle={jobTitle}
+                  jobDescription={jobDescription}
+                  technicalWeight={technicalWeight[0]}
+                  experienceWeight={experienceWeight[0]}
+                  softSkillsWeight={softSkillsWeight[0]}
+                  userId={user?.id || ""}
+                  onConfigured={handleSheetsConfigured}
+                  onCancel={() => setDataSource("cv")}
+                />
               </TabsContent>
               
               <TabsContent value="cv" className="mt-4">
