@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
 import { 
   Loader2, 
@@ -28,6 +29,7 @@ interface JobPosition {
 const History = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,7 +68,6 @@ const History = () => {
 
       if (error) throw error;
 
-      // Get candidate counts
       const jobsWithCounts = await Promise.all(
         (jobs || []).map(async (job) => {
           const { count } = await supabase
@@ -82,8 +83,8 @@ const History = () => {
     } catch (error: any) {
       console.error("Error fetching job positions:", error);
       toast({
-        title: "Error",
-        description: "Failed to load analysis history.",
+        title: t("error"),
+        description: "Error al cargar el historial de análisis.",
         variant: "destructive",
       });
     } finally {
@@ -106,14 +107,14 @@ const History = () => {
       <main className="container mx-auto px-4 py-8 pt-24">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="font-display text-3xl font-bold text-foreground">Analysis History</h1>
+            <h1 className="font-display text-3xl font-bold text-foreground">{t("analysisHistory")}</h1>
             <p className="text-muted-foreground">
-              View and manage your past candidate analyses
+              {t("analysisHistoryDesc")}
             </p>
           </div>
           <Button onClick={() => navigate("/dashboard")} className="gap-2">
             <Plus className="h-4 w-4" />
-            New Analysis
+            {t("newAnalysis")}
           </Button>
         </div>
 
@@ -127,12 +128,12 @@ const History = () => {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
                 <FolderOpen className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">No analyses yet</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-2">{t("noAnalysesYet")}</h3>
               <p className="text-muted-foreground text-center max-w-md mb-6">
-                Start your first candidate analysis to see your history here.
+                {t("noAnalysesDesc")}
               </p>
               <Button onClick={() => navigate("/dashboard")}>
-                Start First Analysis
+                {t("startFirstAnalysis")}
               </Button>
             </CardContent>
           </Card>
@@ -158,14 +159,14 @@ const History = () => {
                         </span>
                         <span className="flex items-center gap-1">
                           <Users className="h-4 w-4" />
-                          {job.candidate_count} candidates
+                          {job.candidate_count} {t("candidates")}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge variant={job.status === "active" ? "default" : "secondary"}>
-                      {job.status}
+                      {job.status === "active" ? t("active") : t("completed")}
                     </Badge>
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </div>

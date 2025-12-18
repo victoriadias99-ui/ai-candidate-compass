@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
 import { 
   ArrowLeft,
@@ -45,6 +46,7 @@ const CandidateProfile = () => {
   const navigate = useNavigate();
   const { candidateId } = useParams();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,8 +93,8 @@ const CandidateProfile = () => {
     } catch (error: any) {
       console.error("Error fetching candidate:", error);
       toast({
-        title: "Error",
-        description: "Failed to load candidate profile.",
+        title: t("error"),
+        description: "Error al cargar el perfil del candidato.",
         variant: "destructive",
       });
     } finally {
@@ -119,8 +121,8 @@ const CandidateProfile = () => {
     } catch (error: any) {
       console.error("Error downloading CV:", error);
       toast({
-        title: "Download Failed",
-        description: "Failed to download the CV file.",
+        title: t("downloadFailed"),
+        description: t("downloadFailedDesc"),
         variant: "destructive",
       });
     }
@@ -135,13 +137,13 @@ const CandidateProfile = () => {
   const getRecommendationBadge = (recommendation: string | null) => {
     switch (recommendation) {
       case "strong_hire":
-        return <Badge className="bg-success text-success-foreground">Strong Hire</Badge>;
+        return <Badge className="bg-success text-success-foreground">{t("strongHire")}</Badge>;
       case "consider":
-        return <Badge className="bg-warning text-warning-foreground">Consider</Badge>;
+        return <Badge className="bg-warning text-warning-foreground">{t("consider")}</Badge>;
       case "not_recommended":
-        return <Badge variant="destructive">Not Recommended</Badge>;
+        return <Badge variant="destructive">{t("notRecommended")}</Badge>;
       default:
-        return <Badge variant="secondary">Pending Analysis</Badge>;
+        return <Badge variant="secondary">{t("pendingAnalysis")}</Badge>;
     }
   };
 
@@ -150,7 +152,7 @@ const CandidateProfile = () => {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-          <p className="mt-4 text-muted-foreground">Loading candidate profile...</p>
+          <p className="mt-4 text-muted-foreground">{t("loadingProfile")}</p>
         </div>
       </div>
     );
@@ -160,9 +162,9 @@ const CandidateProfile = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <p className="text-muted-foreground">Candidate not found.</p>
+          <p className="text-muted-foreground">{t("candidateNotFound")}</p>
           <Button variant="outline" onClick={() => navigate(-1)} className="mt-4">
-            Go Back
+            {t("goBack")}
           </Button>
         </div>
       </div>
@@ -183,7 +185,7 @@ const CandidateProfile = () => {
             className="mb-4 -ml-2"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Results
+            {t("backToResults")}
           </Button>
 
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -215,7 +217,7 @@ const CandidateProfile = () => {
               {getRecommendationBadge(candidate.recommendation)}
               <Button variant="outline" onClick={downloadCV}>
                 <Download className="mr-2 h-4 w-4" />
-                Download CV
+                {t("downloadCV")}
               </Button>
             </div>
           </div>
@@ -225,16 +227,16 @@ const CandidateProfile = () => {
           {/* Scores Card */}
           <Card className="border-border/50 shadow-md">
             <CardHeader>
-              <CardTitle className="font-display">Evaluation Scores</CardTitle>
+              <CardTitle className="font-display">{t("evaluationScores")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Final Score */}
               <div className="text-center p-6 rounded-lg bg-primary/5 border border-primary/20">
-                <p className="text-sm text-muted-foreground mb-2">Final Score</p>
+                <p className="text-sm text-muted-foreground mb-2">{t("finalScore")}</p>
                 <p className={`text-5xl font-bold ${getScoreColor(candidate.final_score || 0)}`}>
                   {candidate.final_score?.toFixed(0) || 0}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">out of 100</p>
+                <p className="text-sm text-muted-foreground mt-1">{t("outOf100")}</p>
               </div>
 
               {/* Individual Scores */}
@@ -243,7 +245,7 @@ const CandidateProfile = () => {
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 text-sm font-medium">
                       <Sparkles className="h-4 w-4 text-accent" />
-                      Technical Skills
+                      {t("technicalSkills")}
                     </span>
                     <span className={`font-semibold ${getScoreColor(candidate.technical_score || 0)}`}>
                       {candidate.technical_score || 0}
@@ -256,7 +258,7 @@ const CandidateProfile = () => {
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 text-sm font-medium">
                       <Briefcase className="h-4 w-4 text-accent" />
-                      Experience
+                      {t("experience")}
                     </span>
                     <span className={`font-semibold ${getScoreColor(candidate.experience_score || 0)}`}>
                       {candidate.experience_score || 0}
@@ -269,7 +271,7 @@ const CandidateProfile = () => {
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 text-sm font-medium">
                       <Heart className="h-4 w-4 text-accent" />
-                      Soft Skills
+                      {t("softSkills")}
                     </span>
                     <span className={`font-semibold ${getScoreColor(candidate.soft_skills_score || 0)}`}>
                       {candidate.soft_skills_score || 0}
@@ -286,7 +288,7 @@ const CandidateProfile = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display">
                 <FileText className="h-5 w-5 text-primary" />
-                AI Evaluation Summary
+                {t("aiEvaluationSummary")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -294,7 +296,7 @@ const CandidateProfile = () => {
                 <p className="text-foreground leading-relaxed">{candidate.summary}</p>
               ) : (
                 <p className="text-muted-foreground italic">
-                  Analysis in progress. Please check back in a moment.
+                  {t("analysisInProgress")}
                 </p>
               )}
             </CardContent>
@@ -307,7 +309,7 @@ const CandidateProfile = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display text-success">
                 <CheckCircle2 className="h-5 w-5" />
-                Strengths
+                {t("strengths")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -321,7 +323,7 @@ const CandidateProfile = () => {
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground italic">Pending analysis...</p>
+                <p className="text-muted-foreground italic">{t("pendingAnalysisText")}</p>
               )}
             </CardContent>
           </Card>
@@ -330,7 +332,7 @@ const CandidateProfile = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display text-destructive">
                 <XCircle className="h-5 w-5" />
-                Areas for Improvement
+                {t("areasForImprovement")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -344,7 +346,7 @@ const CandidateProfile = () => {
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground italic">Pending analysis...</p>
+                <p className="text-muted-foreground italic">{t("pendingAnalysisText")}</p>
               )}
             </CardContent>
           </Card>
@@ -354,9 +356,9 @@ const CandidateProfile = () => {
         {candidate.ai_evaluation && (
           <Card className="mt-6 border-border/50 shadow-md">
             <CardHeader>
-              <CardTitle className="font-display">Detailed AI Analysis</CardTitle>
+              <CardTitle className="font-display">{t("detailedAIAnalysis")}</CardTitle>
               <CardDescription>
-                Complete evaluation generated by AI
+                {t("detailedAnalysisDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>

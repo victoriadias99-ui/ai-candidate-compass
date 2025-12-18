@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/i18n/LanguageContext";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import { ArrowRight, Brain, Users, FileText, BarChart3, Shield, Zap } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
@@ -27,33 +30,33 @@ const Index = () => {
   const features = [
     {
       icon: Brain,
-      title: "AI-Powered Analysis",
-      description: "Advanced AI evaluates candidates against your specific requirements with precision scoring.",
+      title: t("feature1Title"),
+      description: t("feature1Desc"),
     },
     {
       icon: FileText,
-      title: "Bulk CV Processing",
-      description: "Upload up to 50 CVs at once. Our AI extracts and analyzes all relevant information automatically.",
+      title: "Procesamiento Masivo de CVs",
+      description: "Sube hasta 50 CVs a la vez. Nuestra IA extrae y analiza toda la información relevante automáticamente.",
     },
     {
       icon: BarChart3,
-      title: "Smart Rankings",
-      description: "Get instant rankings with Top 3 and Top 5 shortlists based on weighted criteria you define.",
+      title: t("feature3Title"),
+      description: t("feature3Desc"),
     },
     {
       icon: Users,
-      title: "Team Collaboration",
-      description: "Admin and user roles enable secure collaboration across your HR team.",
+      title: "Colaboración en Equipo",
+      description: "Roles de administrador y usuario permiten colaboración segura en tu equipo de RRHH.",
     },
     {
       icon: Shield,
-      title: "Objective Evaluation",
-      description: "Eliminate bias with consistent AI-driven assessments for every candidate.",
+      title: "Evaluación Objetiva",
+      description: "Elimina sesgos con evaluaciones consistentes impulsadas por IA para cada candidato.",
     },
     {
       icon: Zap,
-      title: "Instant Results",
-      description: "Get comprehensive evaluations in seconds, not hours. Accelerate your hiring process.",
+      title: "Resultados Instantáneos",
+      description: "Obtén evaluaciones completas en segundos, no en horas. Acelera tu proceso de contratación.",
     },
   ];
 
@@ -69,11 +72,12 @@ const Index = () => {
             <span className="font-display text-xl font-bold text-foreground">TalentAI</span>
           </div>
           <div className="flex items-center gap-3">
+            <LanguageSelector />
             <Button variant="ghost" onClick={() => navigate("/auth")}>
-              Sign In
+              {t("signIn")}
             </Button>
             <Button onClick={() => navigate("/auth")} className="gap-2">
-              Get Started <ArrowRight className="h-4 w-4" />
+              {t("getStarted")} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -86,23 +90,20 @@ const Index = () => {
           <div className="mx-auto max-w-4xl text-center">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm font-medium text-accent">
               <Zap className="h-4 w-4" />
-              AI-Powered Recruitment Platform
+              {t("landingTitle")}
             </div>
             <h1 className="mb-6 font-display text-5xl font-bold leading-tight tracking-tight text-foreground md:text-6xl lg:text-7xl">
-              Hire Smarter with{" "}
-              <span className="gradient-text">AI-Driven</span>{" "}
-              Candidate Analysis
+              {t("landingSubtitle")}
             </h1>
             <p className="mx-auto mb-10 max-w-2xl text-lg text-muted-foreground md:text-xl">
-              Upload CVs, define your criteria, and let our AI evaluate, score, and rank candidates 
-              automatically. Make data-driven hiring decisions in minutes, not weeks.
+              Sube CVs, define tus criterios y deja que nuestra IA evalúe, puntúe y clasifique candidatos automáticamente. Toma decisiones de contratación basadas en datos en minutos, no en semanas.
             </p>
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Button size="lg" onClick={() => navigate("/auth")} className="gap-2 px-8 text-lg">
-                Start Analyzing <ArrowRight className="h-5 w-5" />
+                {t("getStarted")} <ArrowRight className="h-5 w-5" />
               </Button>
               <Button size="lg" variant="outline" className="px-8 text-lg">
-                Watch Demo
+                Ver Demo
               </Button>
             </div>
           </div>
@@ -114,10 +115,10 @@ const Index = () => {
         <div className="container mx-auto px-4">
           <div className="mb-16 text-center">
             <h2 className="mb-4 font-display text-3xl font-bold text-foreground md:text-4xl">
-              Everything You Need for Modern Recruitment
+              {t("features")}
             </h2>
             <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-              Our platform combines cutting-edge AI with intuitive design to streamline your entire hiring process.
+              {t("featuresSubtitle")}
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -147,10 +148,10 @@ const Index = () => {
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(185_75%_38%/0.2),transparent_70%)]" />
             <div className="relative z-10">
               <h2 className="mb-4 font-display text-3xl font-bold text-primary-foreground md:text-4xl">
-                Ready to Transform Your Hiring?
+                ¿Listo para Transformar tu Proceso de Contratación?
               </h2>
               <p className="mx-auto mb-8 max-w-xl text-lg text-primary-foreground/80">
-                Join leading HR teams using AI to find the best candidates faster and more accurately.
+                Únete a los equipos de RRHH líderes que usan IA para encontrar los mejores candidatos de forma más rápida y precisa.
               </p>
               <Button
                 size="lg"
@@ -158,7 +159,7 @@ const Index = () => {
                 onClick={() => navigate("/auth")}
                 className="gap-2 px-8 text-lg"
               >
-                Get Started Free <ArrowRight className="h-5 w-5" />
+                {t("getStarted")} <ArrowRight className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -176,7 +177,7 @@ const Index = () => {
               <span className="font-display font-semibold text-foreground">TalentAI</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              © 2024 TalentAI. All rights reserved.
+              © 2024 TalentAI. Todos los derechos reservados.
             </p>
           </div>
         </div>
