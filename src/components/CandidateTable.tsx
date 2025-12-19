@@ -83,8 +83,15 @@ export const CandidateTable = ({ candidates, onViewCandidate }: CandidateTablePr
     return "text-destructive";
   };
 
-  const getRecommendationBadge = (recommendation: string | null, analyzed: boolean) => {
-    if (!analyzed) {
+  const isAutoKnockout = (c: Candidate) =>
+    c.recommendation === "not_recommended" &&
+    typeof (c as any).summary === "string" &&
+    (c as any).summary.includes("Descalificado automáticamente");
+
+  const isCandidateAnalyzed = (c: Candidate) => !!c.analyzed_at || isAutoKnockout(c);
+
+  const getRecommendationBadge = (recommendation: string | null, candidate: Candidate) => {
+    if (!isCandidateAnalyzed(candidate)) {
       return (
         <Badge variant="outline" className="gap-1">
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -237,7 +244,7 @@ export const CandidateTable = ({ candidates, onViewCandidate }: CandidateTablePr
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
-                    {getRecommendationBadge(candidate.recommendation, !!candidate.analyzed_at)}
+                    {getRecommendationBadge(candidate.recommendation, candidate)}
                   </TableCell>
                 </TableRow>
               ))
