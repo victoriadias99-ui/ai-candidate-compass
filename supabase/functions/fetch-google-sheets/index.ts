@@ -113,6 +113,29 @@ serve(async (req) => {
 
     const accessToken = await getAccessToken(serviceAccount);
 
+    // First fetch spreadsheet metadata to get available sheet names
+    const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`;
+    const metadataResponse = await fetch(metadataUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!metadataResponse.ok) {
+      const errorText = await metadataResponse.text();
+      console.error("Google Sheets metadata error:", metadataResponse.status, errorText);
+      throw new Error(`Error accessing spreadsheet. Make sure it's shared with the service account.`);
+    }
+
+    const metadata = await metadataResponse.json();
+    const availableSheets = metadata.sheets?.map((s: any) => s.properties.title) || [];
+    console.log("Available sheets:", availableSheets);
+
+    // Check if requested sheet exists
+    if (!availableSheets.includes(sheetName)) {
+      throw new Error(`Sheet "${sheetName}" not found. Available sheets: ${availableSheets.join(", ")}`);
+    }
+
     // Fetch spreadsheet data
     const encodedSheetName = encodeURIComponent(sheetName);
     const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodedSheetName}`;
