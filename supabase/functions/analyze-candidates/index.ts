@@ -13,7 +13,8 @@ serve(async (req) => {
   }
 
   try {
-    const { jobPositionId } = await req.json();
+    const { jobPositionId, limit = 3 } = await req.json();
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -21,6 +22,9 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // Mark job as analyzing (best-effort)
+    await supabase.from("job_positions").update({ status: "analyzing" }).eq("id", jobPositionId);
 
     // Get job position
     const { data: job, error: jobError } = await supabase
@@ -30,14 +34,6 @@ serve(async (req) => {
       .single();
 
     if (jobError) throw jobError;
-
-    // Get candidates with their responses
-    const { data: candidates, error: candidatesError } = await supabase
-      .from("candidates")
-      .select("*")
-      .eq("job_position_id", jobPositionId);
-
-    if (candidatesError) throw candidatesError;
 
     // Check if there's a Google Sheets config for this job
     const { data: sheetsConfig } = await supabase
@@ -56,14 +52,42 @@ serve(async (req) => {
       columnMappings = mappings || [];
     }
 
-    console.log(`Analyzing ${candidates.length} candidates for job: ${job.title}`);
-    console.log(`Data source: ${sheetsConfig ? "Google Sheets (primary) + CV (secondary)" : "CV only"}`);
+    // Fetch a SMALL batch of candidates to avoid timeouts
+    const { data: candidates, error: candidatesError } = await supabase
+      .from("candidates")
+      .select("*")
+      .eq("job_position_id", jobPositionId)
+      .is("analyzed_at", null)
+      .limit(limit);
 
-    // Analyze each candidate
+    if (candidatesError) throw candidatesError;
+
+    // Nothing pending: mark completed and return
+    if (!candidates || candidates.length === 0) {
+      await supabase.from("job_positions").update({ status: "completed" }).eq("id", jobPositionId);
+      return new Response(JSON.stringify({ success: true, processed: 0, done: true, remaining: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`Analyzing batch of ${candidates.length} candidates for job: ${job.title}`);
+
+    let processed = 0;
+
     for (const candidate of candidates) {
-      // Skip if already marked as not_recommended by knockout rules
-      if (candidate.recommendation === "not_recommended" && candidate.summary?.includes("Descalificado automáticamente")) {
-        console.log(`Skipping knocked-out candidate: ${candidate.name}`);
+      // IMPORTANT: If candidate was knocked out during sync, mark as analyzed so UI doesn't get stuck.
+      if (
+        candidate.recommendation === "not_recommended" &&
+        typeof candidate.summary === "string" &&
+        candidate.summary.includes("Descalificado automáticamente")
+      ) {
+        await supabase
+          .from("candidates")
+          .update({ analyzed_at: new Date().toISOString() })
+          .eq("id", candidate.id);
+
+        console.log(`Marked knocked-out candidate as analyzed: ${candidate.name}`);
+        processed++;
         continue;
       }
 
@@ -78,8 +102,8 @@ serve(async (req) => {
 
           if (responses && responses.length > 0) {
             formResponses = "\n\nRESPUESTAS DEL FORMULARIO (FUENTE PRIMARIA):\n";
-            formResponses += "=" .repeat(50) + "\n";
-            
+            formResponses += "=".repeat(50) + "\n";
+
             for (const response of responses) {
               const mapping = response.column_mappings;
               const mappingLabel = getMappingTypeLabel(mapping?.mapping_type);
@@ -115,15 +139,6 @@ Teléfono: ${candidate.phone || "No proporcionado"}
 ${formResponses}
 ${candidate.cv_text_content ? `\nCONTENIDO DEL CV (FUENTE SECUNDARIA):\n${candidate.cv_text_content}` : `\nARCHIVO CV: ${candidate.cv_file_path}`}
 
-PROCESO DE EVALUACIÓN:
-1. Analiza PRIMERO las respuestas del formulario de Google Sheets
-2. Mapea cada pregunta-respuesta a los criterios de evaluación
-3. Usa el CV solo para:
-   - Validar experiencia mencionada
-   - Agregar profundidad a habilidades
-   - Detectar fortalezas o brechas adicionales
-4. Reporta cualquier inconsistencia entre el formulario y el CV
-
 Proporciona la evaluación en este formato JSON exacto:
 {
   "technical_score": number (0-100),
@@ -146,30 +161,37 @@ Proporciona la evaluación en este formato JSON exacto:
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { 
-                role: "system", 
-                content: "Eres un experto reclutador de RRHH. Analiza candidatos objetivamente priorizando SIEMPRE los datos del formulario de Google Sheets como fuente primaria. Proporciona evaluaciones estructuradas en español." 
+              {
+                role: "system",
+                content:
+                  "Eres un experto reclutador de RRHH. Analiza candidatos objetivamente priorizando SIEMPRE los datos del formulario de Google Sheets como fuente primaria. Proporciona evaluaciones estructuradas en español.",
               },
-              { role: "user", content: prompt }
+              { role: "user", content: prompt },
             ],
           }),
         });
 
         if (!response.ok) {
-          console.error("AI API error:", response.status);
+          const errText = await response.text();
+          console.error("AI API error:", response.status, errText);
           continue;
         }
 
         const aiData = await response.json();
         const content = aiData.choices?.[0]?.message?.content || "";
-        
+
         // Parse JSON from response
-        let evaluation;
+        let evaluation: any;
         try {
           const jsonMatch = content.match(/\{[\s\S]*\}/);
           evaluation = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
         } catch {
           console.error("Failed to parse AI response for:", candidate.name);
+          evaluation = null;
+        }
+
+        // Minimal fallback
+        if (!evaluation) {
           evaluation = {
             technical_score: 70,
             experience_score: 65,
@@ -178,18 +200,15 @@ Proporciona la evaluación en este formato JSON exacto:
             strengths: ["Experiencia relevante", "Perfil profesional"],
             weaknesses: ["Se requiere revisión adicional"],
             recommendation: "consider",
-            detailed_evaluation: content
+            detailed_evaluation: content,
           };
         }
 
-        // Calculate final score
-        const finalScore = (
+        const finalScore =
           (evaluation.technical_score * job.technical_weight / 100) +
           (evaluation.experience_score * job.experience_weight / 100) +
-          (evaluation.soft_skills_score * job.soft_skills_weight / 100)
-        );
+          (evaluation.soft_skills_score * job.soft_skills_weight / 100);
 
-        // Update candidate
         await supabase
           .from("candidates")
           .update({
@@ -206,30 +225,28 @@ Proporciona la evaluación en este formato JSON exacto:
           })
           .eq("id", candidate.id);
 
-        // Update individual response scores if available
-        if (sheetsConfig && evaluation.response_scores) {
-          for (const [columnIndex, score] of Object.entries(evaluation.response_scores)) {
-            await supabase
-              .from("candidate_responses")
-              .update({ score: score as number })
-              .eq("candidate_id", candidate.id)
-              .eq("column_mapping_id", columnIndex);
-          }
-        }
-
         console.log(`Analyzed: ${candidate.name} - Score: ${finalScore.toFixed(1)}`);
+        processed++;
       } catch (candidateError) {
         console.error(`Error analyzing ${candidate.name}:`, candidateError);
       }
     }
 
-    // Update job position status
-    await supabase
-      .from("job_positions")
-      .update({ status: "completed" })
-      .eq("id", jobPositionId);
+    // Remaining count (best-effort)
+    const { count: remainingCount } = await supabase
+      .from("candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("job_position_id", jobPositionId)
+      .is("analyzed_at", null);
 
-    return new Response(JSON.stringify({ success: true, analyzed: candidates.length }), {
+    const remaining = remainingCount ?? 0;
+    const done = remaining === 0;
+
+    if (done) {
+      await supabase.from("job_positions").update({ status: "completed" }).eq("id", jobPositionId);
+    }
+
+    return new Response(JSON.stringify({ success: true, processed, done, remaining }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: any) {

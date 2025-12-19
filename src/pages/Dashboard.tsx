@@ -109,13 +109,13 @@ const Dashboard = () => {
   const handleSheetsConfigured = async (configId: string, createdJobPositionId: string) => {
     setSheetsConfigId(configId);
     setJobPositionId(createdJobPositionId);
-    
+
     toast({
       title: t("success"),
       description: "Google Sheets configurado. Sincronizando candidatos...",
     });
 
-    // Sync candidates from Google Sheets
+    // Sync candidates from Google Sheets (optimized to avoid timeouts)
     setIsAnalyzing(true);
     try {
       const { error: syncError } = await supabase.functions.invoke("sync-google-sheets", {
@@ -124,18 +124,12 @@ const Dashboard = () => {
 
       if (syncError) throw syncError;
 
-      // Trigger AI analysis
-      const { error: analysisError } = await supabase.functions.invoke("analyze-candidates", {
-        body: { jobPositionId: createdJobPositionId },
-      });
-
-      if (analysisError) throw analysisError;
-
       toast({
         title: t("analysisStarted"),
-        description: t("analysisStartedDesc"),
+        description: "Sincronización completa. Iniciando análisis por lotes...",
       });
 
+      // Navigate to results: Results page will continue analysis in small batches.
       navigate(`/results/${createdJobPositionId}`);
     } catch (error: any) {
       console.error("Analysis error:", error);
@@ -210,12 +204,7 @@ const Dashboard = () => {
         });
       }
 
-      const { error: analysisError } = await supabase.functions.invoke("analyze-candidates", {
-        body: { jobPositionId: jobPosition.id },
-      });
-
-      if (analysisError) throw analysisError;
-
+      // Analysis is handled in Results page in small batches to avoid request timeouts
       toast({
         title: t("analysisStarted"),
         description: t("analysisStartedDesc"),

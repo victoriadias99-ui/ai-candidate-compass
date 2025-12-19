@@ -33,7 +33,7 @@ async function getAccessToken(serviceAccount: GoogleServiceAccount): Promise<str
   };
 
   const encoder = new TextEncoder();
-  
+
   const base64UrlEncode = (data: Uint8Array): string => {
     return btoa(String.fromCharCode(...data))
       .replace(/\+/g, "-")
@@ -50,20 +50,20 @@ async function getAccessToken(serviceAccount: GoogleServiceAccount): Promise<str
     .replace(/-----END PRIVATE KEY-----/, "")
     .replace(/\n/g, "");
 
-  const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+  const binaryKey = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
 
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
     binaryKey,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
 
   const signature = await crypto.subtle.sign(
     "RSASSA-PKCS1-v1_5",
     cryptoKey,
-    encoder.encode(unsignedToken)
+    encoder.encode(unsignedToken),
   );
 
   const signatureB64 = base64UrlEncode(new Uint8Array(signature));
@@ -77,9 +77,17 @@ async function getAccessToken(serviceAccount: GoogleServiceAccount): Promise<str
 
   const tokenData = await tokenResponse.json();
   if (!tokenData.access_token) {
+    console.error("Token response:", tokenData);
     throw new Error("Failed to obtain access token");
   }
+
   return tokenData.access_token;
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
 }
 
 serve(async (req) => {
@@ -88,8 +96,8 @@ serve(async (req) => {
   }
 
   try {
-    const { jobPositionId, configId, columnMappings } = await req.json();
-    
+    const { jobPositionId, configId } = await req.json();
+
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
@@ -100,6 +108,9 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const serviceAccount: GoogleServiceAccount = JSON.parse(serviceAccountJson);
+
+    // Mark job as syncing
+    await supabase.from("job_positions").update({ status: "syncing" }).eq("id", jobPositionId);
 
     // Get Google Sheets config
     const { data: config, error: configError } = await supabase
@@ -118,9 +129,11 @@ serve(async (req) => {
       .select("*")
       .eq("google_sheets_config_id", configId);
 
-    if (mappingsError) {
-      throw mappingsError;
-    }
+    if (mappingsError) throw mappingsError;
+
+    const nameMapping = mappings.find((m: any) => m.mapping_type === "name");
+    const emailMapping = mappings.find((m: any) => m.mapping_type === "email");
+    const phoneMapping = mappings.find((m: any) => m.mapping_type === "phone");
 
     console.log(`Syncing from sheet: ${config.sheet_id}`);
 
@@ -128,12 +141,14 @@ serve(async (req) => {
     const accessToken = await getAccessToken(serviceAccount);
     const encodedSheetName = encodeURIComponent(config.sheet_name || "Form Responses 1");
     const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheet_id}/values/${encodedSheetName}`;
-    
+
     const response = await fetch(sheetsUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Google Sheets API error:", response.status, errorText);
       throw new Error(`Google Sheets API error: ${response.status}`);
     }
 
@@ -141,37 +156,48 @@ serve(async (req) => {
     const rows = data.values || [];
 
     if (rows.length <= 1) {
+      await supabase
+        .from("google_sheets_config")
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq("id", configId);
+
+      await supabase.from("job_positions").update({ status: "synced" }).eq("id", jobPositionId);
+
       return new Response(JSON.stringify({ success: true, synced: 0, message: "No data rows found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
+    const headers = rows[0] as string[];
+    const dataRows = rows.slice(1) as any[];
 
-    // Find column indexes for name, email, phone
-    const nameMapping = mappings.find((m: any) => m.mapping_type === "name");
-    const emailMapping = mappings.find((m: any) => m.mapping_type === "email");
-    const phoneMapping = mappings.find((m: any) => m.mapping_type === "phone");
+    type PreparedRow = {
+      candidate: {
+        job_position_id: string;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        cv_file_path: string;
+        recommendation: "strong_hire" | "consider" | "not_recommended" | null;
+        summary: string | null;
+        analyzed_at: string | null;
+      };
+      rawRow: any[];
+      isValid: boolean;
+    };
 
-    let syncedCount = 0;
-    let skippedCount = 0;
+    const prepared: PreparedRow[] = dataRows.map((row, idx) => {
+      const candidateName = nameMapping ? row[nameMapping.column_index] : `Candidato ${idx + 1}`;
+      const candidateEmail = emailMapping ? row[emailMapping.column_index] : null;
+      const candidatePhone = phoneMapping ? row[phoneMapping.column_index] : null;
 
-    for (const row of dataRows) {
-      try {
-        const candidateName = nameMapping ? row[nameMapping.column_index] : `Candidato ${syncedCount + 1}`;
-        const candidateEmail = emailMapping ? row[emailMapping.column_index] : null;
-        const candidatePhone = phoneMapping ? row[phoneMapping.column_index] : null;
+      const isValid = !!candidateName && String(candidateName).trim() !== "";
 
-        if (!candidateName || candidateName.trim() === "") {
-          skippedCount++;
-          continue;
-        }
+      // Knock-out rules
+      let isKnockedOut = false;
+      let knockoutReason = "";
 
-        // Check knock-out rules
-        let isKnockedOut = false;
-        let knockoutReason = "";
-
+      if (isValid) {
         for (const mapping of mappings) {
           if (mapping.is_knockout && mapping.knockout_value) {
             const value = row[mapping.column_index]?.toString().toLowerCase() || "";
@@ -212,66 +238,100 @@ serve(async (req) => {
           }
           if (isKnockedOut) break;
         }
+      }
 
-        // Create candidate
-        const { data: candidate, error: candidateError } = await supabase
-          .from("candidates")
-          .insert({
-            job_position_id: jobPositionId,
-            name: candidateName,
-            email: candidateEmail,
-            phone: candidatePhone,
-            cv_file_path: `google-sheets/${config.sheet_id}/${syncedCount}`,
-            recommendation: isKnockedOut ? "not_recommended" : null,
-            summary: isKnockedOut ? `Descalificado automáticamente: ${knockoutReason}` : null,
-          })
-          .select()
-          .single();
+      return {
+        candidate: {
+          job_position_id: jobPositionId,
+          name: String(candidateName || "").trim(),
+          email: candidateEmail ? String(candidateEmail).trim() : null,
+          phone: candidatePhone ? String(candidatePhone).trim() : null,
+          cv_file_path: `google-sheets/${config.sheet_id}/${idx}`,
+          recommendation: (isValid && isKnockedOut ? "not_recommended" : null) as (
+            "not_recommended" | null
+          ),
+          summary: isValid && isKnockedOut ? `Descalificado automáticamente: ${knockoutReason}` : null,
+          // IMPORTANT: mark knocked-out as analyzed so UI doesn't stay "pending" forever.
+          analyzed_at: isValid && isKnockedOut ? new Date().toISOString() : null,
+        },
+        rawRow: row,
+        isValid,
+      };
+    }).filter((p) => p.isValid);
 
-        if (candidateError) {
-          console.error("Error creating candidate:", candidateError);
-          continue;
-        }
+    const candidateChunks = chunkArray(prepared, 50);
 
-        // Store all responses for this candidate
+    let syncedCount = 0;
+
+    for (const chunk of candidateChunks) {
+      const candidateInsertPayload = chunk.map((c) => c.candidate);
+
+      const { data: insertedCandidates, error: insertCandidatesError } = await supabase
+        .from("candidates")
+        .insert(candidateInsertPayload)
+        .select("id, name");
+
+      if (insertCandidatesError) {
+        console.error("Error bulk inserting candidates:", insertCandidatesError);
+        throw insertCandidatesError;
+      }
+
+      const responsesToInsert: any[] = [];
+
+      for (let i = 0; i < insertedCandidates.length; i++) {
+        const inserted = insertedCandidates[i];
+        const originalRow = chunk[i].rawRow;
+
         for (const mapping of mappings) {
           if (mapping.mapping_type !== "ignore") {
-            await supabase.from("candidate_responses").insert({
-              candidate_id: candidate.id,
+            responsesToInsert.push({
+              candidate_id: inserted.id,
               column_mapping_id: mapping.id,
               question: headers[mapping.column_index] || `Columna ${mapping.column_index}`,
-              answer: row[mapping.column_index] || "",
+              answer: originalRow[mapping.column_index] || "",
             });
           }
         }
 
         syncedCount++;
-        console.log(`Synced candidate: ${candidateName}`);
-      } catch (rowError) {
-        console.error("Error processing row:", rowError);
+        if (syncedCount % 25 === 0) {
+          console.log(`Synced ${syncedCount} candidates so far...`);
+        }
+      }
+
+      // Bulk insert responses in chunks (avoid large payloads)
+      for (const respChunk of chunkArray(responsesToInsert, 1000)) {
+        const { error: insertRespError } = await supabase
+          .from("candidate_responses")
+          .insert(respChunk);
+
+        if (insertRespError) {
+          console.error("Error bulk inserting responses:", insertRespError);
+          throw insertRespError;
+        }
       }
     }
 
-    // Update last synced timestamp
     await supabase
       .from("google_sheets_config")
       .update({ last_synced_at: new Date().toISOString() })
       .eq("id", configId);
 
+    await supabase.from("job_positions").update({ status: "synced" }).eq("id", jobPositionId);
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        synced: syncedCount, 
-        skipped: skippedCount,
-        total: dataRows.length 
+      JSON.stringify({
+        success: true,
+        synced: syncedCount,
+        total: dataRows.length,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: any) {
     console.error("Sync error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

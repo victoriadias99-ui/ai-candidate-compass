@@ -30,6 +30,7 @@ interface Candidate {
   recommendation: "strong_hire" | "consider" | "not_recommended" | null;
   ai_evaluation: string | null;
   analyzed_at: string | null;
+  summary?: string | null;
 }
 
 interface JobPosition {
@@ -40,7 +41,15 @@ interface JobPosition {
   experience_weight: number;
   soft_skills_weight: number;
   created_at: string;
+  status?: string | null;
 }
+
+const isAutoKnockout = (c: Candidate) =>
+  c.recommendation === "not_recommended" &&
+  typeof c.summary === "string" &&
+  c.summary.includes("Descalificado automáticamente");
+
+const isCandidateAnalyzed = (c: Candidate) => !!c.analyzed_at || isAutoKnockout(c);
 
 const Results = () => {
   const navigate = useNavigate();
@@ -53,6 +62,7 @@ const Results = () => {
   const [jobPosition, setJobPosition] = useState<JobPosition | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
@@ -75,15 +85,28 @@ const Results = () => {
   useEffect(() => {
     if (jobId && user) {
       fetchData();
-      
+
       const interval = setInterval(fetchData, 5000);
       setRefreshInterval(interval);
-      
+
       return () => {
         if (interval) clearInterval(interval);
       };
     }
   }, [jobId, user]);
+
+  // Auto-run analysis batches while there are pending candidates
+  useEffect(() => {
+    if (!jobId) return;
+    if (isLoading) return;
+    if (isRunningAnalysis) return;
+
+    const hasPending = candidates.some((c) => !isCandidateAnalyzed(c));
+    if (!hasPending) return;
+
+    runAnalysisBatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, isLoading, candidates, isRunningAnalysis]);
 
   const fetchData = async () => {
     if (!jobId) return;
@@ -107,7 +130,7 @@ const Results = () => {
       if (candidateError) throw candidateError;
       setCandidates(candidateData || []);
 
-      const allAnalyzed = candidateData?.every(c => c.analyzed_at !== null);
+      const allAnalyzed = (candidateData || []).every(isCandidateAnalyzed);
       if (allAnalyzed && refreshInterval) {
         clearInterval(refreshInterval);
         setRefreshInterval(null);
@@ -155,15 +178,52 @@ const Results = () => {
 
   const getRecommendationText = (rec: string | null) => {
     switch (rec) {
-      case "strong_hire": return t("strongHire");
-      case "consider": return t("consider");
-      case "not_recommended": return t("notRecommended");
-      default: return t("pending");
+      case "strong_hire":
+        return t("strongHire");
+      case "consider":
+        return t("consider");
+      case "not_recommended":
+        return t("notRecommended");
+      default:
+        return t("pending");
     }
   };
 
-  const analyzedCandidates = candidates.filter(c => c.analyzed_at !== null);
-  const pendingCandidates = candidates.filter(c => c.analyzed_at === null);
+  const runAnalysisBatch = async () => {
+    if (!jobId) return;
+
+    setIsRunningAnalysis(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-candidates", {
+        body: { jobPositionId: jobId, limit: 3 },
+      });
+
+      if (error) throw error;
+
+      if (data?.done) {
+        toast({
+          title: t("success"),
+          description: "Análisis completado.",
+        });
+        setIsRunningAnalysis(false);
+        return;
+      }
+
+      // Continue in small batches
+      setTimeout(runAnalysisBatch, 800);
+    } catch (e: any) {
+      console.error("Batch analysis error:", e);
+      toast({
+        title: t("analysisError"),
+        description: e?.message || t("analysisErrorDesc"),
+        variant: "destructive",
+      });
+      setIsRunningAnalysis(false);
+    }
+  };
+
+  const analyzedCandidates = candidates.filter(isCandidateAnalyzed);
+  const pendingCandidates = candidates.filter((c) => !isCandidateAnalyzed(c));
   const top3 = analyzedCandidates.slice(0, 3);
   const averageScore = analyzedCandidates.length > 0
     ? (analyzedCandidates.reduce((sum, c) => sum + (c.final_score || 0), 0) / analyzedCandidates.length).toFixed(1)
@@ -205,10 +265,26 @@ const Results = () => {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={exportToCSV} disabled={candidates.length === 0}>
+            <Button
+              variant="outline"
+              onClick={exportToCSV}
+              disabled={candidates.length === 0}
+            >
               <Download className="mr-2 h-4 w-4" />
               {t("exportCSV")}
             </Button>
+            {pendingCandidates.length > 0 && (
+              <Button onClick={runAnalysisBatch} disabled={isRunningAnalysis}>
+                {isRunningAnalysis ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("analyzing")}
+                  </>
+                ) : (
+                  t("analyzeWithAI")
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
