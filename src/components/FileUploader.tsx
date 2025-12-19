@@ -14,7 +14,7 @@ interface FileUploaderProps {
 export const FileUploader = ({ 
   files, 
   setFiles, 
-  maxFiles = 50,
+  maxFiles = 500,
   disabled = false 
 }: FileUploaderProps) => {
   const { toast } = useToast();
