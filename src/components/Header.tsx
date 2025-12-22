@@ -55,6 +55,7 @@ export const Header = ({ user }: HeaderProps) => {
     navigate("/");
   };
 
+  // Non-admins only see history - no dashboard or settings
   const navItems = isAdmin 
     ? [
         { label: t("dashboard"), path: "/dashboard", icon: LayoutDashboard },
