@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { Brain, User, LogOut, LayoutDashboard, History } from "lucide-react";
+import { Brain, User, LogOut, LayoutDashboard, History, Settings, Shield } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface HeaderProps {
@@ -23,6 +25,22 @@ export const Header = ({ user }: HeaderProps) => {
   const location = useLocation();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkRole = async () => {
+      if (user) {
+        const { data } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .single();
+        
+        setIsAdmin(data?.role === "admin");
+      }
+    };
+    checkRole();
+  }, [user]);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -41,6 +59,11 @@ export const Header = ({ user }: HeaderProps) => {
     { label: t("dashboard"), path: "/dashboard", icon: LayoutDashboard },
     { label: t("history"), path: "/history", icon: History },
   ];
+
+  // Add settings for admins
+  if (isAdmin) {
+    navItems.push({ label: "Configuración", path: "/settings", icon: Settings });
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -84,13 +107,31 @@ export const Header = ({ user }: HeaderProps) => {
                 <span className="hidden md:inline text-sm">
                   {user.email?.split("@")[0]}
                 </span>
+                {isAdmin && (
+                  <Badge variant="secondary" className="ml-1 gap-1">
+                    <Shield className="h-3 w-3" />
+                    Admin
+                  </Badge>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{user.email}</p>
+                {isAdmin && (
+                  <p className="text-xs text-muted-foreground">Administrador</p>
+                )}
               </div>
               <DropdownMenuSeparator />
+              {isAdmin && (
+                <>
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Configuración
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 {t("signOut")}

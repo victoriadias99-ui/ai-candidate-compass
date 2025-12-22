@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_comments: {
+        Row: {
+          candidate_id: string
+          content: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          content: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_comments_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_responses: {
         Row: {
           ai_analysis: string | null
@@ -269,6 +304,7 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          is_active: boolean
           updated_at: string
           user_id: string
         }
@@ -277,6 +313,7 @@ export type Database = {
           email: string
           full_name?: string | null
           id?: string
+          is_active?: boolean
           updated_at?: string
           user_id: string
         }
@@ -285,6 +322,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          is_active?: boolean
           updated_at?: string
           user_id?: string
         }

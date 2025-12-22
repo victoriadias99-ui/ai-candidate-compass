@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Results from "./pages/Results";
 import CandidateProfile from "./pages/CandidateProfile";
 import History from "./pages/History";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/results/:jobId" element={<Results />} />
             <Route path="/candidate/:candidateId" element={<CandidateProfile />} />
             <Route path="/history" element={<History />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
