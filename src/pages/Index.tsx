@@ -1,31 +1,27 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useRole } from "@/hooks/useRole";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { ArrowRight, Brain, Users, FileText, BarChart3, Shield, Zap } from "lucide-react";
+import { ArrowRight, Brain, Users, FileText, BarChart3, Shield, Zap, Loader2 } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, isAdmin, isLoading: roleLoading } = useRole();
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      setIsAuthenticated(!!session);
-      if (session) {
+    if (!roleLoading && user) {
+      // Redirect based on role: admins to dashboard, users to history
+      if (isAdmin) {
         navigate("/dashboard");
+      } else {
+        navigate("/history");
       }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-  }, [navigate]);
+    }
+  }, [user, isAdmin, roleLoading, navigate]);
 
   const features = [
     {

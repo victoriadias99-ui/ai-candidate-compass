@@ -328,6 +328,35 @@ export type Database = {
         }
         Relationships: []
       }
+      user_job_access: {
+        Row: {
+          created_at: string
+          id: string
+          job_position_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_position_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_position_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_job_access_job_position_id_fkey"
+            columns: ["job_position_id"]
+            isOneToOne: false
+            referencedRelation: "job_positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

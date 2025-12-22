@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -31,10 +32,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
-import { Loader2, Settings as SettingsIcon, Users, Shield, UserX } from "lucide-react";
+import { Loader2, Settings as SettingsIcon, Users, Shield, FolderOpen } from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -46,12 +55,25 @@ interface UserProfile {
   role: "admin" | "user";
 }
 
+interface JobPosition {
+  id: string;
+  title: string;
+}
+
+interface JobAccessDialogState {
+  open: boolean;
+  userId: string;
+  userName: string;
+  assignedJobs: string[];
+}
+
 const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useLanguage();
   const { user, isAdmin, isLoading: roleLoading } = useRole();
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -60,6 +82,8 @@ const Settings = () => {
     userName: string;
     newValue?: string;
   } | null>(null);
+  const [jobAccessDialog, setJobAccessDialog] = useState<JobAccessDialogState | null>(null);
+  const [savingAccess, setSavingAccess] = useState(false);
 
   useEffect(() => {
     if (!roleLoading && !isAdmin) {
@@ -70,6 +94,7 @@ const Settings = () => {
   useEffect(() => {
     if (isAdmin) {
       fetchUsers();
+      fetchJobPositions();
     }
   }, [isAdmin]);
 
@@ -109,6 +134,96 @@ const Settings = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchJobPositions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("job_positions")
+        .select("id, title")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setJobPositions(data || []);
+    } catch (error: any) {
+      console.error("Error fetching job positions:", error);
+    }
+  };
+
+  const openJobAccessDialog = async (userProfile: UserProfile) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_job_access")
+        .select("job_position_id")
+        .eq("user_id", userProfile.user_id);
+      
+      if (error) throw error;
+
+      setJobAccessDialog({
+        open: true,
+        userId: userProfile.user_id,
+        userName: userProfile.full_name || userProfile.email,
+        assignedJobs: data?.map((d) => d.job_position_id) || [],
+      });
+    } catch (error: any) {
+      console.error("Error fetching job access:", error);
+      toast({
+        title: t("error"),
+        description: "Error al cargar accesos.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const toggleJobAccess = (jobId: string) => {
+    if (!jobAccessDialog) return;
+    setJobAccessDialog((prev) => {
+      if (!prev) return prev;
+      const exists = prev.assignedJobs.includes(jobId);
+      return {
+        ...prev,
+        assignedJobs: exists
+          ? prev.assignedJobs.filter((id) => id !== jobId)
+          : [...prev.assignedJobs, jobId],
+      };
+    });
+  };
+
+  const saveJobAccess = async () => {
+    if (!jobAccessDialog) return;
+    setSavingAccess(true);
+    try {
+      // Delete all existing access for this user
+      await supabase
+        .from("user_job_access")
+        .delete()
+        .eq("user_id", jobAccessDialog.userId);
+
+      // Insert new access entries
+      if (jobAccessDialog.assignedJobs.length > 0) {
+        const { error } = await supabase.from("user_job_access").insert(
+          jobAccessDialog.assignedJobs.map((jobId) => ({
+            user_id: jobAccessDialog.userId,
+            job_position_id: jobId,
+          }))
+        );
+        if (error) throw error;
+      }
+
+      toast({
+        title: t("success"),
+        description: "Accesos actualizados correctamente.",
+      });
+      setJobAccessDialog(null);
+    } catch (error: any) {
+      console.error("Error saving job access:", error);
+      toast({
+        title: t("error"),
+        description: "Error al guardar accesos.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAccess(false);
     }
   };
 
@@ -259,9 +374,10 @@ const Settings = () => {
                     <TableHead>Rol</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Fecha de Registro</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
+                        <TableHead>Acceso a Trabajos</TableHead>
+                        <TableHead className="text-right">Activo</TableHead>
+                      </TableRow>
+                    </TableHeader>
                 <TableBody>
                   {users.map((userProfile) => (
                     <TableRow key={userProfile.id}>
@@ -308,22 +424,31 @@ const Settings = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {new Date(userProfile.created_at).toLocaleDateString()}
+                        {userProfile.role === "user" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openJobAccessDialog(userProfile)}
+                          >
+                            <FolderOpen className="h-4 w-4 mr-1" />
+                            Gestionar
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Acceso completo</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Switch
-                            checked={userProfile.is_active}
-                            onCheckedChange={() =>
-                              handleToggleActive(
-                                userProfile.user_id,
-                                userProfile.is_active,
-                                userProfile.full_name || userProfile.email
-                              )
-                            }
-                            disabled={userProfile.user_id === user?.id}
-                          />
-                        </div>
+                        <Switch
+                          checked={userProfile.is_active}
+                          onCheckedChange={() =>
+                            handleToggleActive(
+                              userProfile.user_id,
+                              userProfile.is_active,
+                              userProfile.full_name || userProfile.email
+                            )
+                          }
+                          disabled={userProfile.user_id === user?.id}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -364,6 +489,56 @@ const Settings = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Job Access Dialog */}
+      <Dialog
+        open={jobAccessDialog?.open}
+        onOpenChange={(open) => !open && setJobAccessDialog(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Acceso a Trabajos</DialogTitle>
+            <DialogDescription>
+              Selecciona los trabajos que "{jobAccessDialog?.userName}" puede ver.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 overflow-y-auto space-y-2 py-4">
+            {jobPositions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No hay trabajos disponibles.
+              </p>
+            ) : (
+              jobPositions.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex items-center gap-3 p-2 rounded hover:bg-muted/50"
+                >
+                  <Checkbox
+                    id={job.id}
+                    checked={jobAccessDialog?.assignedJobs.includes(job.id) || false}
+                    onCheckedChange={() => toggleJobAccess(job.id)}
+                  />
+                  <label
+                    htmlFor={job.id}
+                    className="text-sm font-medium cursor-pointer flex-1"
+                  >
+                    {job.title}
+                  </label>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJobAccessDialog(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={saveJobAccess} disabled={savingAccess}>
+              {savingAccess && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
