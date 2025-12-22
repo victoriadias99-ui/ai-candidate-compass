@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { Brain, Loader2, Mail, Lock, User } from "lucide-react";
+import { Brain, Loader2, Mail, Lock, User, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
 const Auth = () => {
@@ -22,6 +22,8 @@ const Auth = () => {
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupFullName, setSignupFullName] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
 
   const loginSchema = z.object({
     email: z.string().email(t("emailRequired")),
@@ -37,13 +39,13 @@ const Auth = () => {
   useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        navigate("/dashboard");
+        navigate("/");
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/dashboard");
+        navigate("/");
       }
     });
   }, [navigate]);
@@ -81,7 +83,7 @@ const Auth = () => {
       title: t("welcomeBack"),
       description: "Has iniciado sesión correctamente.",
     });
-    navigate("/dashboard");
+    navigate("/");
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -133,8 +135,112 @@ const Auth = () => {
       title: t("accountCreated"),
       description: "Bienvenido a TalentAI. Ya puedes comenzar a analizar candidatos.",
     });
-    navigate("/dashboard");
+    navigate("/");
   };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!resetEmail) {
+      toast({
+        title: t("error"),
+        description: "Por favor ingresa tu correo electrónico.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/auth?reset=true`,
+    });
+
+    setIsLoading(false);
+    
+    if (error) {
+      toast({
+        title: t("error"),
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Correo enviado",
+      description: "Revisa tu bandeja de entrada para restablecer tu contraseña.",
+    });
+    setShowForgotPassword(false);
+    setResetEmail("");
+  };
+
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(185_75%_38%/0.08),transparent_50%)]" />
+        
+        <div className="absolute top-4 right-4">
+          <LanguageSelector />
+        </div>
+        
+        <div className="w-full max-w-md relative z-10">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary shadow-lg">
+              <Brain className="h-8 w-8 text-primary-foreground" />
+            </div>
+            <h1 className="font-display text-2xl font-bold text-foreground">TalentAI</h1>
+            <p className="text-muted-foreground">Recuperar contraseña</p>
+          </div>
+
+          <Card className="border-border/50 shadow-xl">
+            <CardHeader className="pb-4">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowForgotPassword(false)}
+                className="w-fit gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver al inicio
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-email">{t("email")}</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="tu@empresa.com"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Te enviaremos un enlace para restablecer tu contraseña.
+                  </p>
+                </div>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    "Enviar enlace"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -204,6 +310,14 @@ const Auth = () => {
                     ) : (
                       t("signIn")
                     )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-sm"
+                    onClick={() => setShowForgotPassword(true)}
+                  >
+                    ¿Olvidaste tu contraseña?
                   </Button>
                 </form>
               </TabsContent>
