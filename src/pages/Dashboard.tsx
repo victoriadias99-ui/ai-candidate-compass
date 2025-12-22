@@ -48,7 +48,11 @@ const Dashboard = () => {
     if (!roleLoading && !user) {
       navigate("/auth");
     }
-  }, [user, roleLoading, navigate]);
+    // Redirect non-admins to history - they can't access dashboard
+    if (!roleLoading && user && !isAdmin) {
+      navigate("/history");
+    }
+  }, [user, roleLoading, isAdmin, navigate]);
 
   // Check if user is active
   useEffect(() => {
@@ -210,7 +214,7 @@ const Dashboard = () => {
 
   const totalWeight = technicalWeight[0] + experienceWeight[0] + softSkillsWeight[0];
 
-  if (roleLoading || !user) {
+  if (roleLoading || !user || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -218,35 +222,11 @@ const Dashboard = () => {
     );
   }
 
-  // Read-only mode for non-admins
-  const isReadOnly = !isAdmin;
-
   return (
     <div className="min-h-screen bg-background">
       <Header user={user} />
       
       <main className="container mx-auto px-4 py-8 pt-24">
-        {/* Read-only notice for non-admins */}
-        {isReadOnly && (
-          <div className="mb-6 rounded-lg border border-warning/30 bg-warning/10 p-4 flex items-center gap-3">
-            <Lock className="h-5 w-5 text-warning" />
-            <div>
-              <p className="font-medium text-foreground">Modo de solo lectura</p>
-              <p className="text-sm text-muted-foreground">
-                Solo los administradores pueden crear nuevos análisis. Puedes ver el historial de posiciones existentes.
-              </p>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => navigate("/history")}
-              className="ml-auto"
-            >
-              Ver Historial
-            </Button>
-          </div>
-        )}
-
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-foreground">{t("newAnalysis")}</h1>
           <p className="text-muted-foreground">
@@ -401,14 +381,8 @@ const Dashboard = () => {
                 <FileUploader 
                   files={files} 
                   setFiles={setFiles} 
-                  maxFiles={50}
-                  disabled={!isAdmin}
+                  maxFiles={500}
                 />
-                {!isAdmin && (
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Solo los administradores pueden subir y analizar CVs.
-                  </p>
-                )}
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -419,7 +393,7 @@ const Dashboard = () => {
           <Button
             size="lg"
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !isAdmin || (dataSource === "cv" && files.length === 0) || totalWeight !== 100}
+            disabled={isAnalyzing || (dataSource === "cv" && files.length === 0) || totalWeight !== 100}
             className="gap-2 px-12 text-lg"
           >
             {isAnalyzing ? (
