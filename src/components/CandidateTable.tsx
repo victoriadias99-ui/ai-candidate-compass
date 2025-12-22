@@ -35,12 +35,13 @@ interface Candidate {
 interface CandidateTableProps {
   candidates: Candidate[];
   onViewCandidate: (id: string) => void;
+  isAdmin?: boolean;
 }
 
 type SortField = "final_score" | "technical_score" | "experience_score" | "soft_skills_score" | "name";
 type SortOrder = "asc" | "desc";
 
-export const CandidateTable = ({ candidates, onViewCandidate }: CandidateTableProps) => {
+export const CandidateTable = ({ candidates, onViewCandidate, isAdmin = false }: CandidateTableProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRecommendation, setFilterRecommendation] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("final_score");
@@ -218,9 +219,11 @@ export const CandidateTable = ({ candidates, onViewCandidate }: CandidateTablePr
                   <TableCell>
                     <div>
                       <p className="font-medium text-foreground">{candidate.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {candidate.email || "No email"}
-                      </p>
+                      {isAdmin && (
+                        <p className="text-sm text-muted-foreground">
+                          {candidate.email || "No email"}
+                        </p>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-center">

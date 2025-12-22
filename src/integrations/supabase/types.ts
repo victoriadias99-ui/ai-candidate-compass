@@ -383,6 +383,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_candidate_public: {
+        Args: { _candidate_id: string }
+        Returns: {
+          ai_evaluation: string
+          analyzed_at: string
+          experience_score: number
+          final_score: number
+          id: string
+          job_position_id: string
+          name: string
+          recommendation: Database["public"]["Enums"]["recommendation_level"]
+          soft_skills_score: number
+          strengths: string[]
+          summary: string
+          technical_score: number
+          weaknesses: string[]
+        }[]
+      }
+      get_candidates_public: {
+        Args: { _job_position_id: string }
+        Returns: {
+          ai_evaluation: string
+          analyzed_at: string
+          experience_score: number
+          final_score: number
+          id: string
+          job_position_id: string
+          name: string
+          recommendation: Database["public"]["Enums"]["recommendation_level"]
+          soft_skills_score: number
+          strengths: string[]
+          summary: string
+          technical_score: number
+          weaknesses: string[]
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

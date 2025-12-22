@@ -17,7 +17,7 @@ import {
   TrendingUp,
   BarChart3
 } from "lucide-react";
-import type { User, Session } from "@supabase/supabase-js";
+import { useRole } from "@/hooks/useRole";
 
 interface Candidate {
   id: string;
@@ -56,8 +56,7 @@ const Results = () => {
   const { jobId } = useParams();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, isAdmin, isLoading: roleLoading } = useRole();
   const [isLoading, setIsLoading] = useState(true);
   const [jobPosition, setJobPosition] = useState<JobPosition | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -65,22 +64,10 @@ const Results = () => {
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-  }, [navigate]);
+    if (!roleLoading && !user) {
+      navigate("/auth");
+    }
+  }, [user, roleLoading, navigate]);
 
   useEffect(() => {
     if (jobId && user) {
@@ -121,16 +108,36 @@ const Results = () => {
       if (jobError) throw jobError;
       setJobPosition(job);
 
-      const { data: candidateData, error: candidateError } = await supabase
-        .from("candidates")
-        .select("*")
-        .eq("job_position_id", jobId)
-        .order("final_score", { ascending: false });
+      // Admins query candidates directly, non-admins use RPC (no PII)
+      let candidateData: Candidate[] = [];
+      if (isAdmin) {
+        const { data, error: candidateError } = await supabase
+          .from("candidates")
+          .select("*")
+          .eq("job_position_id", jobId)
+          .order("final_score", { ascending: false });
 
-      if (candidateError) throw candidateError;
-      setCandidates(candidateData || []);
+        if (candidateError) throw candidateError;
+        candidateData = (data || []).map(c => ({
+          ...c,
+          email: c.email,
+        }));
+      } else {
+        // Non-admin: use RPC which excludes PII
+        const { data, error: rpcError } = await supabase.rpc("get_candidates_public", {
+          _job_position_id: jobId,
+        });
 
-      const allAnalyzed = (candidateData || []).every(isCandidateAnalyzed);
+        if (rpcError) throw rpcError;
+        candidateData = (data || []).map((c: any) => ({
+          ...c,
+          email: null, // Ensure email is null for non-admins
+        }));
+      }
+
+      setCandidates(candidateData);
+
+      const allAnalyzed = candidateData.every(isCandidateAnalyzed);
       if (allAnalyzed && refreshInterval) {
         clearInterval(refreshInterval);
         setRefreshInterval(null);
@@ -150,16 +157,22 @@ const Results = () => {
   const exportToCSV = () => {
     if (candidates.length === 0) return;
 
-    const headers = [t("name"), t("email"), t("finalScore"), t("technical"), t("experience"), t("softSkills"), t("recommendation")];
-    const rows = candidates.map(c => [
-      c.name,
-      c.email || "",
-      c.final_score?.toString() || "0",
-      c.technical_score?.toString() || "0",
-      c.experience_score?.toString() || "0",
-      c.soft_skills_score?.toString() || "0",
-      c.recommendation || t("pending"),
-    ]);
+    // Only admins can see email in export
+    const headers = isAdmin 
+      ? [t("name"), t("email"), t("finalScore"), t("technical"), t("experience"), t("softSkills"), t("recommendation")]
+      : [t("name"), t("finalScore"), t("technical"), t("experience"), t("softSkills"), t("recommendation")];
+    
+    const rows = candidates.map(c => {
+      const baseRow = [
+        c.name,
+        c.final_score?.toString() || "0",
+        c.technical_score?.toString() || "0",
+        c.experience_score?.toString() || "0",
+        c.soft_skills_score?.toString() || "0",
+        c.recommendation || t("pending"),
+      ];
+      return isAdmin ? [c.name, c.email || "", ...baseRow.slice(1)] : baseRow;
+    });
 
     const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
@@ -251,11 +264,11 @@ const Results = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate(isAdmin ? "/dashboard" : "/history")}
               className="mb-2 -ml-2"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              {t("backToDashboard")}
+              {isAdmin ? t("backToDashboard") : t("backToHistory")}
             </Button>
             <h1 className="font-display text-3xl font-bold text-foreground">
               {jobPosition?.title || t("analysisResults")}
@@ -374,7 +387,9 @@ const Results = () => {
                     </div>
                     <div className="ml-4">
                       <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-                      <p className="text-sm text-muted-foreground">{candidate.email || t("noEmail")}</p>
+                      {isAdmin && (
+                        <p className="text-sm text-muted-foreground">{candidate.email || t("noEmail")}</p>
+                      )}
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-2xl font-bold text-accent">
                           {candidate.final_score?.toFixed(0) || 0}
@@ -409,6 +424,7 @@ const Results = () => {
             <CandidateTable 
               candidates={candidates} 
               onViewCandidate={(id) => navigate(`/candidate/${id}`)}
+              isAdmin={isAdmin}
             />
           </CardContent>
         </Card>

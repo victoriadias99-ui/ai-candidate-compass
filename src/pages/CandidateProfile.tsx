@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole } from "@/hooks/useRole";
+import type { Database } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import {
 
 interface Candidate {
   id: string;
+  job_position_id: string;
   name: string;
   email: string | null;
   phone: string | null;
@@ -48,7 +50,7 @@ const CandidateProfile = () => {
   const { candidateId } = useParams();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { user, isLoading: roleLoading } = useRole();
+  const { user, isAdmin, isLoading: roleLoading } = useRole();
   const [isLoading, setIsLoading] = useState(true);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [jobPositionId, setJobPositionId] = useState<string | null>(null);
@@ -69,15 +71,40 @@ const CandidateProfile = () => {
     if (!candidateId) return;
 
     try {
-      const { data, error } = await supabase
-        .from("candidates")
-        .select("*, job_position_id")
-        .eq("id", candidateId)
-        .single();
+      let candidateData: Candidate | null = null;
 
-      if (error) throw error;
-      setCandidate(data);
-      setJobPositionId(data.job_position_id);
+      if (isAdmin) {
+        // Admins get full data including PII
+        const { data, error } = await supabase
+          .from("candidates")
+          .select("*, job_position_id")
+          .eq("id", candidateId)
+          .single();
+
+        if (error) throw error;
+        candidateData = data;
+      } else {
+        // Non-admins use RPC (excludes PII like email/phone)
+        const { data, error } = await supabase.rpc("get_candidate_public", {
+          _candidate_id: candidateId,
+        });
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          const row = data[0];
+          candidateData = {
+            ...row,
+            email: null,
+            phone: null,
+            cv_file_path: "", // Not accessible
+          };
+        }
+      }
+
+      if (candidateData) {
+        setCandidate(candidateData);
+        setJobPositionId(candidateData.job_position_id);
+      }
     } catch (error: any) {
       console.error("Error fetching candidate:", error);
       toast({
@@ -185,28 +212,32 @@ const CandidateProfile = () => {
                 <h1 className="font-display text-3xl font-bold text-foreground">
                   {candidate.name}
                 </h1>
-                <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-muted-foreground">
-                  {candidate.email && (
-                    <span className="flex items-center gap-1">
-                      <Mail className="h-4 w-4" />
-                      {candidate.email}
-                    </span>
-                  )}
-                  {candidate.phone && (
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-4 w-4" />
-                      {candidate.phone}
-                    </span>
-                  )}
-                </div>
+                {isAdmin && (
+                  <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-muted-foreground">
+                    {candidate.email && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="h-4 w-4" />
+                        {candidate.email}
+                      </span>
+                    )}
+                    {candidate.phone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-4 w-4" />
+                        {candidate.phone}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-3">
               {getRecommendationBadge(candidate.recommendation)}
-              <Button variant="outline" onClick={downloadCV}>
-                <Download className="mr-2 h-4 w-4" />
-                {t("downloadCV")}
-              </Button>
+              {isAdmin && (
+                <Button variant="outline" onClick={downloadCV}>
+                  <Download className="mr-2 h-4 w-4" />
+                  {t("downloadCV")}
+                </Button>
+              )}
             </div>
           </div>
         </div>
