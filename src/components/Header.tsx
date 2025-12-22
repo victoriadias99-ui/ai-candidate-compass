@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { Brain, User, LogOut, LayoutDashboard, History, Settings, Shield } from "lucide-react";
+import { Brain, User, LogOut, LayoutDashboard, History, Settings, Shield, Key } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface HeaderProps {
@@ -55,15 +55,15 @@ export const Header = ({ user }: HeaderProps) => {
     navigate("/");
   };
 
-  const navItems = [
-    { label: t("dashboard"), path: "/dashboard", icon: LayoutDashboard },
-    { label: t("history"), path: "/history", icon: History },
-  ];
-
-  // Add settings for admins
-  if (isAdmin) {
-    navItems.push({ label: "Configuración", path: "/settings", icon: Settings });
-  }
+  const navItems = isAdmin 
+    ? [
+        { label: t("dashboard"), path: "/dashboard", icon: LayoutDashboard },
+        { label: t("history"), path: "/history", icon: History },
+        { label: "Configuración", path: "/settings", icon: Settings },
+      ]
+    : [
+        { label: t("history"), path: "/history", icon: History },
+      ];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -71,7 +71,7 @@ export const Header = ({ user }: HeaderProps) => {
         <div className="flex items-center gap-8">
           <div 
             className="flex items-center gap-2 cursor-pointer" 
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate(isAdmin ? "/dashboard" : "/history")}
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
               <Brain className="h-5 w-5 text-primary-foreground" />
@@ -123,15 +123,19 @@ export const Header = ({ user }: HeaderProps) => {
                 )}
               </div>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate("/change-password")}>
+                <Key className="mr-2 h-4 w-4" />
+                Cambiar contraseña
+              </DropdownMenuItem>
               {isAdmin && (
                 <>
                   <DropdownMenuItem onClick={() => navigate("/settings")}>
                     <Settings className="mr-2 h-4 w-4" />
                     Configuración
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                 </>
               )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 {t("signOut")}

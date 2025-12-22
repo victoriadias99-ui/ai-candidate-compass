@@ -11,6 +11,7 @@ import Results from "./pages/Results";
 import CandidateProfile from "./pages/CandidateProfile";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
+import ChangePassword from "./pages/ChangePassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/candidate/:candidateId" element={<CandidateProfile />} />
             <Route path="/history" element={<History />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/change-password" element={<ChangePassword />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
