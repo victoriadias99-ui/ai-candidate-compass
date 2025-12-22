@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useRole } from "@/hooks/useRole";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +26,10 @@ import {
   Users,
   ChevronRight,
   Plus,
-  Trash2
+  Trash2,
+  Pencil
 } from "lucide-react";
-import type { User, Session } from "@supabase/supabase-js";
+import { EditJobDialog } from "@/components/EditJobDialog";
 
 interface JobPosition {
   id: string;
@@ -35,6 +37,9 @@ interface JobPosition {
   description: string;
   created_at: string;
   status: string;
+  technical_weight: number;
+  experience_weight: number;
+  soft_skills_weight: number;
   candidate_count?: number;
 }
 
@@ -42,28 +47,30 @@ const History = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, isAdmin, isLoading: roleLoading, isActive } = useRole();
   const [isLoading, setIsLoading] = useState(true);
   const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
+  const [editingJob, setEditingJob] = useState<JobPosition | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
+    if (!roleLoading && !user) {
+      navigate("/auth");
+    }
+  }, [user, roleLoading, navigate]);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-  }, [navigate]);
+  // Check if user is active
+  useEffect(() => {
+    if (!roleLoading && user && !isActive) {
+      toast({
+        title: "Cuenta desactivada",
+        description: "Tu cuenta ha sido desactivada. Contacta al administrador.",
+        variant: "destructive",
+      });
+      supabase.auth.signOut();
+      navigate("/auth");
+    }
+  }, [isActive, roleLoading, user, navigate, toast]);
 
   useEffect(() => {
     if (user) {
@@ -138,7 +145,25 @@ const History = () => {
     }
   };
 
-  if (!user) {
+  const handleEditJob = (job: JobPosition, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingJob(job);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleJobSaved = (updatedJob: JobPosition, recalculate: boolean) => {
+    setJobPositions((prev) =>
+      prev.map((j) => (j.id === updatedJob.id ? { ...j, ...updatedJob } : j))
+    );
+    if (recalculate) {
+      toast({
+        title: "Recalculando puntuaciones",
+        description: "Navega a los resultados para ver el progreso.",
+      });
+    }
+  };
+
+  if (roleLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -154,14 +179,14 @@ const History = () => {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground">{t("analysisHistory")}</h1>
-            <p className="text-muted-foreground">
-              {t("analysisHistoryDesc")}
-            </p>
+            <p className="text-muted-foreground">{t("analysisHistoryDesc")}</p>
           </div>
-          <Button onClick={() => navigate("/dashboard")} className="gap-2">
-            <Plus className="h-4 w-4" />
-            {t("newAnalysis")}
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => navigate("/dashboard")} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t("newAnalysis")}
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
@@ -171,26 +196,18 @@ const History = () => {
         ) : jobPositions.length === 0 ? (
           <Card className="border-border/50">
             <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-                <FolderOpen className="h-8 w-8 text-muted-foreground" />
-              </div>
+              <FolderOpen className="h-8 w-8 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold text-foreground mb-2">{t("noAnalysesYet")}</h3>
-              <p className="text-muted-foreground text-center max-w-md mb-6">
-                {t("noAnalysesDesc")}
-              </p>
-              <Button onClick={() => navigate("/dashboard")}>
-                {t("startFirstAnalysis")}
-              </Button>
+              <p className="text-muted-foreground text-center max-w-md mb-6">{t("noAnalysesDesc")}</p>
+              {isAdmin && (
+                <Button onClick={() => navigate("/dashboard")}>{t("startFirstAnalysis")}</Button>
+              )}
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4">
             {jobPositions.map((job) => (
-              <Card
-                key={job.id}
-                className="border-border/50 shadow-sm hover:shadow-md transition-all cursor-pointer"
-                onClick={() => navigate(`/results/${job.id}`)}
-              >
+              <Card key={job.id} className="border-border/50 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => navigate(`/results/${job.id}`)}>
                 <CardContent className="flex items-center justify-between p-6">
                   <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
@@ -199,50 +216,33 @@ const History = () => {
                     <div>
                       <h3 className="font-semibold text-foreground">{job.title}</h3>
                       <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          {new Date(job.created_at).toLocaleDateString()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="h-4 w-4" />
-                          {job.candidate_count} {t("candidates")}
-                        </span>
+                        <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{new Date(job.created_at).toLocaleDateString()}</span>
+                        <span className="flex items-center gap-1"><Users className="h-4 w-4" />{job.candidate_count} {t("candidates")}</span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant={job.status === "active" ? "default" : "secondary"}>
-                      {job.status === "active" ? t("active") : t("completed")}
-                    </Badge>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar posición?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción eliminará la posición "{job.title}" y todos sus candidatos asociados. Esta acción no se puede deshacer.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={(e) => handleDeleteJob(job.id, e)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <Badge variant={job.status === "active" ? "default" : "secondary"}>{job.status === "active" ? t("active") : t("completed")}</Badge>
+                    {isAdmin && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={(e) => handleEditJob(job, e)}><Pencil className="h-4 w-4" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar posición?</AlertDialogTitle>
+                              <AlertDialogDescription>Esta acción eliminará "{job.title}" y todos sus candidatos. No se puede deshacer.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={(e) => handleDeleteJob(job.id, e)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    )}
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </CardContent>
@@ -251,6 +251,8 @@ const History = () => {
           </div>
         )}
       </main>
+
+      <EditJobDialog job={editingJob} open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSave={handleJobSaved} />
     </div>
   );
 };

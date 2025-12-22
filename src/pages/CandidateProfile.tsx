@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useRole } from "@/hooks/useRole";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
+import { CandidateComments } from "@/components/CandidateComments";
 import { 
   ArrowLeft,
   Download,
@@ -22,7 +24,6 @@ import {
   XCircle,
   FileText
 } from "lucide-react";
-import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
 
 interface Candidate {
   id: string;
@@ -47,29 +48,16 @@ const CandidateProfile = () => {
   const { candidateId } = useParams();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, isLoading: roleLoading } = useRole();
   const [isLoading, setIsLoading] = useState(true);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [jobPositionId, setJobPositionId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-  }, [navigate]);
+    if (!roleLoading && !user) {
+      navigate("/auth");
+    }
+  }, [user, roleLoading, navigate]);
 
   useEffect(() => {
     if (candidateId && user) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useRole } from "@/hooks/useRole";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,18 +22,15 @@ import {
   Briefcase, 
   Heart,
   Upload,
-  Sheet
+  Sheet,
+  Lock
 } from "lucide-react";
-import type { User, Session } from "@supabase/supabase-js";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { user, isAdmin, isLoading: roleLoading, isActive } = useRole();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Form state
@@ -47,36 +45,23 @@ const Dashboard = () => {
   const [jobPositionId, setJobPositionId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      } else {
-        checkUserRole(session.user.id);
-      }
-    });
-  }, [navigate]);
-
-  const checkUserRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .single();
-
-    if (data && data.role === "admin") {
-      setIsAdmin(true);
+    if (!roleLoading && !user) {
+      navigate("/auth");
     }
-  };
+  }, [user, roleLoading, navigate]);
+
+  // Check if user is active
+  useEffect(() => {
+    if (!roleLoading && user && !isActive) {
+      toast({
+        title: "Cuenta desactivada",
+        description: "Tu cuenta ha sido desactivada. Contacta al administrador.",
+        variant: "destructive",
+      });
+      supabase.auth.signOut();
+      navigate("/auth");
+    }
+  }, [isActive, roleLoading, user, navigate, toast]);
 
   const createJobPosition = async () => {
     if (!jobDescription.trim()) {
@@ -225,7 +210,7 @@ const Dashboard = () => {
 
   const totalWeight = technicalWeight[0] + experienceWeight[0] + softSkillsWeight[0];
 
-  if (!user) {
+  if (roleLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -233,11 +218,35 @@ const Dashboard = () => {
     );
   }
 
+  // Read-only mode for non-admins
+  const isReadOnly = !isAdmin;
+
   return (
     <div className="min-h-screen bg-background">
       <Header user={user} />
       
       <main className="container mx-auto px-4 py-8 pt-24">
+        {/* Read-only notice for non-admins */}
+        {isReadOnly && (
+          <div className="mb-6 rounded-lg border border-warning/30 bg-warning/10 p-4 flex items-center gap-3">
+            <Lock className="h-5 w-5 text-warning" />
+            <div>
+              <p className="font-medium text-foreground">Modo de solo lectura</p>
+              <p className="text-sm text-muted-foreground">
+                Solo los administradores pueden crear nuevos análisis. Puedes ver el historial de posiciones existentes.
+              </p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate("/history")}
+              className="ml-auto"
+            >
+              Ver Historial
+            </Button>
+          </div>
+        )}
+
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-foreground">{t("newAnalysis")}</h1>
           <p className="text-muted-foreground">
