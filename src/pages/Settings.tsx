@@ -43,7 +43,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Header } from "@/components/Header";
-import { Loader2, Settings as SettingsIcon, Users, Shield, FolderOpen } from "lucide-react";
+import { Loader2, Settings as SettingsIcon, Users, Shield, FolderOpen, Key } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface UserProfile {
   id: string;
@@ -84,6 +86,13 @@ const Settings = () => {
   } | null>(null);
   const [jobAccessDialog, setJobAccessDialog] = useState<JobAccessDialogState | null>(null);
   const [savingAccess, setSavingAccess] = useState(false);
+  const [resetPasswordDialog, setResetPasswordDialog] = useState<{
+    open: boolean;
+    userId: string;
+    userName: string;
+  } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   useEffect(() => {
     if (!roleLoading && !isAdmin) {
@@ -224,6 +233,61 @@ const Settings = () => {
       });
     } finally {
       setSavingAccess(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordDialog || !newPassword) return;
+    
+    if (newPassword.length < 6) {
+      toast({
+        title: t("error"),
+        description: "La contraseña debe tener al menos 6 caracteres.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-reset-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: resetPasswordDialog.userId,
+            newPassword: newPassword,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Error al cambiar contraseña");
+      }
+
+      toast({
+        title: t("success"),
+        description: `Contraseña de "${resetPasswordDialog.userName}" actualizada correctamente.`,
+      });
+      setResetPasswordDialog(null);
+      setNewPassword("");
+    } catch (error: any) {
+      console.error("Error resetting password:", error);
+      toast({
+        title: t("error"),
+        description: error.message || "Error al cambiar contraseña.",
+        variant: "destructive",
+      });
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -373,10 +437,10 @@ const Settings = () => {
                     <TableHead>Email</TableHead>
                     <TableHead>Rol</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead>Fecha de Registro</TableHead>
-                        <TableHead>Acceso a Trabajos</TableHead>
-                        <TableHead className="text-right">Activo</TableHead>
-                      </TableRow>
+                    <TableHead>Acceso a Trabajos</TableHead>
+                    <TableHead>Contraseña</TableHead>
+                    <TableHead className="text-right">Activo</TableHead>
+                  </TableRow>
                     </TableHeader>
                 <TableBody>
                   {users.map((userProfile) => (
@@ -436,6 +500,20 @@ const Settings = () => {
                         ) : (
                           <span className="text-muted-foreground text-sm">Acceso completo</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setResetPasswordDialog({
+                            open: true,
+                            userId: userProfile.user_id,
+                            userName: userProfile.full_name || userProfile.email,
+                          })}
+                        >
+                          <Key className="h-4 w-4 mr-1" />
+                          Cambiar
+                        </Button>
                       </TableCell>
                       <TableCell className="text-right">
                         <Switch
@@ -534,6 +612,50 @@ const Settings = () => {
             </Button>
             <Button onClick={saveJobAccess} disabled={savingAccess}>
               {savingAccess && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={resetPasswordDialog?.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResetPasswordDialog(null);
+            setNewPassword("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cambiar Contraseña</DialogTitle>
+            <DialogDescription>
+              Establece una nueva contraseña para "{resetPasswordDialog?.userName}".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nueva Contraseña</Label>
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setResetPasswordDialog(null);
+              setNewPassword("");
+            }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleResetPassword} disabled={resettingPassword || newPassword.length < 6}>
+              {resettingPassword && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Guardar
             </Button>
           </DialogFooter>
